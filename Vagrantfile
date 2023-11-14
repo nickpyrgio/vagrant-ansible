@@ -98,6 +98,7 @@ end
 
 HYPERVISORS = SETTINGS['hypervisors']
 DEFAULT_GLOBAL_SETTINGS = SETTINGS['default_global_settings']
+NETWORKS = SETTINGS['networks']
 SERVERS = []
 SERVERS = initializeLabServerList(LAB)
 SERVERS_COUNT = SERVERS.length
@@ -109,7 +110,7 @@ Vagrant.configure("2") do |config|
 
   SERVERS.each do |_server|
 
-    _management_network = _server[:management_network] ? _server[:management_network] : '';
+    _management_network = _server[:management_network] ? _server[:management_network] : NETWORKS['default_management_network'];
 
     if _server[:disabled]
       SERVER_COUNTER +=1
@@ -122,7 +123,6 @@ Vagrant.configure("2") do |config|
         _cmd = ''
         trigger.on_error = :continue
         trigger.info = "Add DHCP host configuration for static management network IP"
-
         if _server[:mgmt_attach] and _management_network[:mac]
           _cmd += add_dhcp_host_conf(
             _management_network[:management_network_name],
