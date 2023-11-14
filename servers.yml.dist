@@ -1,0 +1,119 @@
+---
+
+networks:
+  ovs_lab: &ovs_lab
+    :network_name: ovs-network
+    :ovs: true
+    :type: network
+    :portgroup: vlan-all
+    :auto_config: false
+  bridge_network: &bridge_network
+    :dev: bridge0
+    :type: bridge
+    :auto_config: false
+    :is_gateway: false # Custom variable
+    :is_dhcp: true # Custom variable
+  private_network: &private_network
+      :libvirt__network_name: private_test
+      :libvirt__network_address: "10.0.2.0"
+      :libvirt__netmask: '255.255.255.0'
+      :libvirt__forward_mode: none
+      :libvirt__always_destroy: false
+      :type: dhcp
+  management: &management
+    :management_network_name: 'vagrant-management'
+    :management_network_address: "10.0.74.0/24"
+    :management_network_mtu: "1500"
+    :management_network_keep: false
+    # Custom. Can be accessed in ansible tasks
+    :custom_iface_name: "eth0"
+    :is_gateway: true
+    :is_dhcp: true
+
+hypervisors:
+  :localhost:
+    :hypervisor_host: null
+    :hypervisor_user: null
+    :hypervisor_id_ssh_key_file: null
+    :hypervisor_connect_via_ssh: null
+
+  :remote:
+    :hypervisor_host: 192.168.18.1
+    :hypervisor_user: user
+    :hypervisor_id_ssh_key_file: path_to_key
+    :hypervisor_connect_via_ssh: true
+
+forwards:
+  :ssh: &forward_ssh
+    :host_ip: "0.0.0.0"
+    :guest: 22
+  :http: &forward_http
+    :host_ip: "0.0.0.0"
+    :guest: 80
+  :https: &forward_https
+    :host_ip: "0.0.0.0"
+    :guest: 443
+
+default_global_settings:
+  :cpus: 1
+  :ram: 1024
+  :hypervisor_name: "localhost"
+  :box: "generic/debian11"
+  :forwards: []
+  :private_networks: []
+  :public_networks: []
+  :storage: []
+  :mgmt_attach: true
+  # :ansible_playbook: "/path/to/playbook" # if not set ansible provisioner will be skipped
+  :ansible_deploy_individually: false
+  :ansible_raw_ssh_args: []
+  :ansible_verbose: "v"
+  :ansible_host_vars: {}
+  :ansible_host_vars: {}
+  :ansible_become: true
+  :ansible_extra_vars:
+    var: "value"
+  # Custom. Can be accessed from ansible if needed
+
+labs:
+  default:
+    # LAB SPECIFIC SETTINGS
+    lab_settings:
+      :ram: 512
+      :ansible_playbook: ansible/playbook.yml
+      :ansible_inventory_path: null # use dynamic inventory
+    servers:
+    - :hostname: vm1
+      :box: debian/bookworm64
+      :ansible_deploy_individually: true
+    - :hostname: vm2
+      :box: generic/debian11
+      :ram: 2048M
+      :mgmt_attach: false
+      :qemu_use_agent: true
+      :public_networks:
+        - <<: *bridge_network
+          :mac: 52:59:10:38:51:99
+          :is_gateway: true # This can be referenced in your ansible tasks
+      - :hostname: default
+        :cpus: 2
+        :qemu_use_agent: true
+        :ip_address_offset: 111
+        :management_network:
+          <<: *management
+          :mac: 52:54:00:0f:c1:11
+        :private_networks:
+          - <<: *private_network
+            :mac: 52:59:31:68:a1:11
+        :public_networks:
+          - <<: *ovs_lab
+            :mac: 52:59:30:68:41:11
+          - <<: *bridge_network
+            :mac: 52:59:10:3c:51:11
+        :forwards:
+          - <<: *forward_ssh
+            :host: 2209
+          - <<: *forward_http
+            :host: 8080
+          - <<: *forward_https
+            :host: 8443
