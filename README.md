@@ -4,6 +4,9 @@ Add it to your project like.
 ```bash
 git submodule add https://github.com/nickpyrgio/vagrant-ansible.git
 
+# To update submodule run
+git submodule update --recursive --remote
+
 cd vagrant-ansible
 ./create_vagrant_ansible_env.sh
 cd ../vagrant
