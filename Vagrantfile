@@ -301,27 +301,48 @@ Vagrant.configure("2") do |config|
             _ansible_vagrant_configuration[:is_provisioned] = true;
           end
 
-          if _provisioner[:ansible_serial_deployment]
-            _custom_ansible_overrides = {
-              extra_vars: Vagrant::Util::DeepMerge.deep_merge(_provisioner_options.fetch(:extra_vars, {}), { 'ANSIBLE_EXTRA_VARS': _ansible_vagrant_configuration})
-            }
-            _custom_ansible_defaults = {
-              playbook: "#{_provisioner.fetch(:ansible_playbook_dir, 'ansible')}/#{_provisioner.fetch(:ansible_playbook)}",
-              limit: _server[:hostname]
-            }
-            _provisioner_options = _custom_ansible_defaults.merge(_provisioner_options.merge(_custom_ansible_overrides))
-          else
+          _custom_ansible_overrides = {
+            extra_vars: Vagrant::Util::DeepMerge.deep_merge(_provisioner_options.fetch(:extra_vars, _server.fetch(:ansible_extra_vars, {})), { 'ANSIBLE_EXTRA_VARS': _ansible_vagrant_configuration})
+          }
+          _custom_ansible_defaults = {
+            playbook: "#{_provisioner.fetch(:ansible_playbook_dir, _server.fetch(:ansible_playbook_dir, 'ansible'))}/#{_provisioner.fetch(:ansible_playbook , _server.fetch(:ansible_playbook, nil))}",
+            limit: _server[:hostname],
+            playbook_command: _server.fetch(:ansible_playbook_command, "ansible-playbook"),
+            verbose: _server[:ansible_verbose],
+            become: _server[:ansible_become] ? true : false,
+            become_user: _server[:ansible_become_user] ? _server[:ansible_become_user] : 'root',
+            compatibility_mode: "2.0",
+            # limit: "all",
+            raw_ssh_args: _server[:ansible_raw_ssh_args],
+            start_at_task: _server[:ansible_start_at_task],
+            tags: _server[:ansible_tags],
+            skip_tags: _server[:ansible_skip_tags],
+            inventory_path: _server[:ansible_inventory_path],
+            host_vars: _server[:ansible_host_vars] ? _server[:ansible_host_vars] : {},
+            groups: _server[:ansible_groups] ? _server[:ansible_groups] : {},
+            config_file: _server[:ansible_config_file],
+            vault_password_file: _server[:ansible_vault_password_file],
+            force_remote_user: _server[:ansible_force_remote_user],
+            raw_arguments: _server[:ansible_raw_arguments]
+          }
+
+          _provisioner_options = Vagrant::Util::DeepMerge.deep_merge(_custom_ansible_defaults, _provisioner_options)
+          _provisioner_options = Vagrant::Util::DeepMerge.deep_merge(_provisioner_options, _custom_ansible_overrides)
+
+          if not _provisioner[:ansible_serial_deployment]
             if not ANSIBLE_CUSTOM_OPTIONS.key?(:"#{_provisioner_name}")
               ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"] = {
                 extra_vars: {},
                 limit_hosts: [],
-                provisioner: {}
+                provisioner: {},
+                provisioner_options: {}
               }
             end
 
             ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:extra_vars] = (_ansible_vagrant_configuration)
             ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
             ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:provisioner] = Vagrant::Util::DeepMerge.deep_merge(ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:provisioner], _provisioner)
+            ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:provisioner_options] = _provisioner_options
             if (SERVERS_COUNT == SERVER_COUNTER)
               next
             end
@@ -338,18 +359,10 @@ Vagrant.configure("2") do |config|
         ANSIBLE_CUSTOM_OPTIONS.keys.each do |provisioner_name|
 
           _provisioner = ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:provisioner]
-          _provisioner_options = _provisioner[:options]
+          _provisioner_options = ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:provisioner_options]
+          _provisioner_options[:limit] = ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:limit_hosts]
 
           if ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:limit_hosts].length != 0
-            _custom_ansible_overrides = {
-              extra_vars: Vagrant::Util::DeepMerge.deep_merge(_provisioner_options.fetch(:extra_vars, {}),({ 'ANSIBLE_EXTRA_VARS': ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:extra_vars] }))
-            }
-            _custom_ansible_defaults = {
-              playbook: "#{_provisioner.fetch(:ansible_playbook_dir, 'ansible')}/#{_provisioner.fetch(:ansible_playbook)}",
-              limit: _provisioner.fetch(:ansible_serial_deployment, false) ? _provisioner_options[:hostname] : ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:limit_hosts].join(',')
-            }
-            _provisioner_options = _custom_ansible_defaults.merge(_provisioner_options.merge(_custom_ansible_overrides))
-
             worker.vm.provision provisioner_name, **_provisioner_options
           end
         end
