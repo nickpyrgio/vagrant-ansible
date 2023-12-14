@@ -1,38 +1,50 @@
 ---
 
+synced_folders:
+  disabled: &disabled
+    :src: "."
+    :dest: "/vagrant"
+    :options:
+      :disabled: true
+
+provisioners:
+  docker_setup: &docker_setup
+    :name: docker_setup
+    :options:
+      # https://developer.hashicorp.com/vagrant/docs/provisioning/shell#inline-scripts
+      :type: shell
+      :inline: |
+        DEBIAN_FRONTEND=noninteractive apt update
+        apt -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --assume-yes install docker docker-compose
+        echo Hello World quotes \"\"
+      :run: always
+  # https://developer.hashicorp.com/vagrant/docs/provisioning/file
+  file_test: &file_test
+    :name: file_test
+    :options:
+      :type: file
+      :source: ./Vagrantfile
+      :destination: Vagrantfile
+      :run: never
+  ansible_provisioner_common: &ansible_provisioner_common
+    :name: ansible_common
+    :ansible_playbook_dir: ansible
+    :ansible_playbook: base_playbook.yml
+    :ansible_serial_deployment: no
+    :options: &ansible_provisioner_common_options
+      :type: ansible
+      :compatibility_mode: "2.0"
+      :verbose: "v"
+      :become: true
+      :become_user: root
+
 networks:
-  ovs_lab: &ovs_lab
-    :network_name: ovs-network
-    :ovs: true
-    :type: network
-    :portgroup: vlan-all
-    :auto_config: false
-
-  bridge_network: &bridge_network
-    :dev: bridge0
-    :type: bridge
-    :auto_config: false
-    :is_gateway: false # Custom ansible variable
-    :is_dhcp: true # Custom ansible variable
-
-  private_network: &private_network
-      :libvirt__network_name: private_test
-      :libvirt__network_address: "10.0.2.0"
-      :libvirt__netmask: '255.255.255.0'
-      :libvirt__forward_mode: none
-      :libvirt__always_destroy: false
-      :type: dhcp
-
   # This network will be used if server management_network is not overriden
   default_management_network: &default_management_network
-    :management_network_name: 'vagrant-libvirt’.'
+    :management_network_name: 'vagrant-libvirt'
     :management_network_address: "192.168.121.0/24"
     :management_network_mtu: "1500"
     :management_network_keep: false
-    # Custom. Can be accessed in ansible tasks
-    :custom_iface_name: "eth0"
-    :is_gateway: true
-    :is_dhcp: true
 
 hypervisors:
   :localhost:
@@ -40,12 +52,6 @@ hypervisors:
     :hypervisor_user: null
     :hypervisor_id_ssh_key_file: null
     :hypervisor_connect_via_ssh: null
-
-  :remote:
-    :hypervisor_host: 192.168.18.1
-    :hypervisor_user: user
-    :hypervisor_id_ssh_key_file: path_to_key
-    :hypervisor_connect_via_ssh: true
 
 forwards:
   :ssh: &forward_ssh
@@ -62,7 +68,7 @@ default_global_settings:
   :cpus: 1
   :ram: 1024
   :hypervisor_name: "localhost"
-  :box: "generic/debian11"
+  :box: "debian/bookworm64"
   :forwards: []
   :private_networks: []
   :public_networks: []
@@ -73,53 +79,22 @@ default_global_settings:
   :ansible_raw_ssh_args: []
   :ansible_verbose: "v"
   :ansible_host_vars: {}
-  :ansible_host_vars: {}
+  :ansible_group_vars: {}
   :ansible_become: true
   :ansible_extra_vars:
     var: "value"
-  # Custom. Can be accessed from ansible if needed
 
 labs:
   default:
     # LAB SPECIFIC SETTINGS
-    lab_settings:
-      :ram: 512
-      :ansible_playbook: ansible/playbook.yml
-      :ansible_inventory_path: null # use dynamic inventory
+    lab_settings: {}
     servers:
-      - :hostname: vm1
-        :box: debian/bookworm64
-        :ansible_deploy_individually: true
-        :ansible_playbook: null
-      - :hostname: vm2
-        :box: generic/debian11
-        :ansible_playbook: null
-        :ram: 2048M
-        :mgmt_attach: false
-        :qemu_use_agent: true
-        :public_networks:
-          - <<: *bridge_network
-            :mac: 52:59:10:38:51:99
-            :is_gateway: true # This can be referenced in your ansible tasks
       - :hostname: default
-        :cpus: 2
-        :ansible_playbook: null
-        :qemu_use_agent: true
-        :ip_address_offset: 111
-        :management_network:
-          <<: *default_management_network
-          :mac: 52:54:00:0f:c1:11
-        :private_networks:
-          - <<: *private_network
-            :mac: 52:59:31:68:a1:11
-        :public_networks:
-          - <<: *ovs_lab
-            :mac: 52:59:30:68:41:11
-          - <<: *bridge_network
-            :mac: 52:59:10:3c:51:11
+        :scripts:
+          - docker_setup
         :forwards:
           - <<: *forward_ssh
-            :host: 2209
+            :host: 2222
           - <<: *forward_http
             :host: 8080
           - <<: *forward_https

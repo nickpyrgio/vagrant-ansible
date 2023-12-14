@@ -1,0 +1,7 @@
+---
+
+- hosts: "all"
+  gather_facts: yes
+  tasks:
+    - command: "echo Hello World2"
+

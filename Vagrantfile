@@ -18,7 +18,7 @@ def initializeLabServerList(lab)
     _server = DEFAULT_GLOBAL_SETTINGS.merge(_lab_settings).merge(server)
     SERVERS.append(_server)
   end
-  return SERVERS.sort_by { |_srv| _srv[:ansible_deploy_individually] ? 0 : 1 }
+  return SERVERS.sort_by { |_srv| _srv.fetch(:server_index_weight, 0) }
 end
 
 def provisioned?(vm_name='default', provider='libvirt')
@@ -96,15 +96,16 @@ else
   SETTINGS = YAML.load_file("#{CURRENT_DIR}/servers.yml.dist", aliases: true)
 end
 
-HYPERVISORS = SETTINGS['hypervisors']
+SYNCED_FOLDERS = SETTINGS['synced_folders'] ? SETTINGS['synced_folders'] : {};
+PROVISIONERS = SETTINGS['provisioners'] ? SETTINGS['provisioners'] : {};
+HYPERVISORS = SETTINGS['hypervisors']  ? SETTINGS['hypervisors'] : {};
+NETWORKS = SETTINGS['networks'] ? SETTINGS['networks'] : {};
 DEFAULT_GLOBAL_SETTINGS = SETTINGS['default_global_settings']
-NETWORKS = SETTINGS['networks']
 SERVERS = []
 SERVERS = initializeLabServerList(LAB)
 SERVERS_COUNT = SERVERS.length
 SERVER_COUNTER = 0
-ANSIBLE_EXTRA_VARS = {}
-ANSIBLE_LIMIT_HOSTS = []
+ANSIBLE_CUSTOM_OPTIONS = {}
 
 Vagrant.configure("2") do |config|
 
@@ -145,7 +146,7 @@ Vagrant.configure("2") do |config|
             )
           end
         end
-        if _cmd != ''
+        unless _cmd.empty?
           trigger.run = {inline: "bash -c \"#{_cmd}\""}
         end
       end
@@ -177,78 +178,38 @@ Vagrant.configure("2") do |config|
             )
           end
         end
-        if _cmd != ''
+        unless _cmd.empty?
           trigger.run = {inline: "bash -c \"#{_cmd}\""}
         end
       end
 
-      worker.vm.synced_folder ".", "/vagrant", disabled: true
+      # SYNCED FOLDERS
+      _server[:synced_folders].each do |folder|
+        _src = folder.is_a?(Hash) ? folder[:src] : SYNCED_FOLDERS[folder][:src];
+        _dest = folder.is_a?(Hash) ? folder[:dest] : SYNCED_FOLDERS[folder][:dest];
+        _options = folder.is_a?(Hash) ? folder[:options] : SYNCED_FOLDERS[folder][:options];
+        worker.vm.synced_folder _src, _dest, **_options
+      end
 
       worker.vm.box = _server[:box];
       if !_server[:box_url].nil?
         worker.vm.box_url = _server[:box_url];
       end
+
       worker.vm.hostname = _server[:hostname];
 
       # Network
       _server[:private_networks].each do |net|
-        worker.vm.network :private_network,
-          (net[:type] ? :type : '_skip') => net[:type],
-          (net[:libvirt__network_name] ? :libvirt__network_name : '_skip') => net[:libvirt__network_name],
-          (net[:libvirt__network_address] ? :libvirt__network_address : '_skip') => net[:libvirt__network_address],
-          (net[:libvirt__netmask] ? :libvirt__netmask : '_skip') => net[:libvirt__netmask],
-          (net[:libvirt__host_ip] ? :libvirt__host_ip : '_skip') => net[:libvirt__host_ip],
-          (net[:libvirt__domain_name] ? :libvirt__domain_name : '_skip') => net[:libvirt__domain_name],
-          (net[:libvirt__dhcp_enabled] ? :libvirt__dhcp_enabled : '_skip') => net[:libvirt__dhcp_enabled],
-          (net[:libvirt__dhcp_start] ? :libvirt__dhcp_start : '_skip') => net[:libvirt__dhcp_start],
-          (net[:libvirt__dhcp_stop] ? :libvirt__dhcp_stop : '_skip') => net[:libvirt__dhcp_stop],
-          (net[:libvirt__dhcp_bootp_file] ? :libvirt__dhcp_bootp_file : '_skip') => net[:libvirt__dhcp_bootp_file],
-          (net[:libvirt__dhcp_bootp_server] ? :libvirt__dhcp_bootp_server : '_skip') => net[:libvirt__dhcp_bootp_server],
-          (net[:libvirt__tftp_root] ? :libvirt__tftp_root : '_skip') => net[:libvirt__tftp_root],
-          (net[:libvirt__adapter] ? :libvirt__adapter : '_skip') => net[:libvirt__adapter],
-          (net[:libvirt__forward_mode] ? :libvirt__forward_mode : '_skip') => net[:libvirt__forward_mode],
-          (net[:libvirt__forward_device] ? :libvirt__forward_device : '_skip') => net[:libvirt__forward_device],
-          (net[:libvirt__tunnel_type] ? :libvirt__tunnel_type : '_skip') => net[:libvirt__tunnel_type],
-          (net[:libvirt__tunnel_port] ? :libvirt__tunnel_port : '_skip') => net[:libvirt__tunnel_port],
-          (net[:libvirt__tunnel_local_port] ? :libvirt__tunnel_local_port : '_skip') => net[:libvirt__tunnel_local_port],
-          (net[:libvirt__tunnel_local_ip] ? :libvirt__tunnel_local_ip : '_skip') => net[:libvirt__tunnel_local_ip],
-          (net[:libvirt__guest_ipv6] ? :libvirt__guest_ipv6 : '_skip') => net[:libvirt__guest_ipv6],
-          (net[:libvirt__ipv6_address] ? :libvirt__ipv6_address : '_skip') => net[:libvirt__ipv6_address],
-          (net[:libvirt__ipv6_prefix] ? :libvirt__ipv6_prefix : '_skip') => net[:libvirt__ipv6_prefix],
-          (net[:libvirt__iface_name] ? :libvirt__iface_name : '_skip') => net[:libvirt__iface_name],
-          (net[:mac] ? :libvirt__mac : '_skip') => net[:mac],
-          (net[:libvirt__mtu] ? :libvirt__mtu : '_skip') => net[:libvirt__mtu],
-          (net[:libvirt__model_type] ? :libvirt__model_type : '_skip') => net[:libvirt__model_type],
-          (net[:libvirt__driver_name] ? :libvirt__driver_name : '_skip') => net[:libvirt__driver_name],
-          (net[:libvirt__driver_queues] ? :libvirt__driver_queues : '_skip') => net[:libvirt__driver_queues],
-          (net[:autostart] ? :autostart : '_skip') => net[:autostart],
-          (net[:libvirt__bus] ? :libvirt__bus : '_skip') => net[:libvirt__bus],
-          (net[:libvirt__slot] ? :libvirt__slot : '_skip') => net[:libvirt__slot],
-          (net[:libvirt__always_destroy] ? :libvirt__always_destroy : '_skip') => net[:libvirt__always_destroy]
-        end
+        worker.vm.network :private_network, **net
+      end
 
       _server[:public_networks].each do |net|
-        worker.vm.network :public_network,
-          (net[:dev] ? :dev : '_skip') => net[:dev],
-          (net[:mode] ? :mode : '_skip') => net[:mode],
-          (net[:mac] ? :mac : '_skip') => net[:mac],
-          (net[:type] ? :type : '_skip') => net[:type],
-          (net[:network_name] ? :network_name : '_skip') => net[:network_name],
-          (net[:portgroup] ? :portgroup : '_skip') => net[:portgroup],
-          (net[:ovs] ? :ovs : '_skip') => net[:ovs],
-          (net[:trust_guest_rx_filters] ? :trust_guest_rx_filters : '_skip') => net[:trust_guest_rx_filters],
-          (net[:libvirt__iface_name] ? :libvirt__iface_name : '_skip') => net[:libvirt__iface_name],
-          (net[:libvirt__iface_name] ? :libvirt__iface_name : '_skip') => net[:libvirt__iface_name],
-          (net[:libvirt__mtu] ? :libvirt__mtu : '_skip') => net[:libvirt__mtu],
-          (net[:auto_config] ? :auto_config : '_skip') => net[:auto_config],
-          (net[:host_device_exclude_prefixes] ? :host_device_exclude_prefixes : '_skip') => net[:host_device_exclude_prefixes]
-        end
+        worker.vm.network :public_network, **net
+      end
 
       if !_server[:forwards].nil?
         _server[:forwards].each do |forward|
-          _host_ip = forward[:host_ip] ? forward[:host_ip] : "localhost";
-          _gateway_ports = forward[:_gateway_ports].to_s == 'true' ? true : false;
-          worker.vm.network :forwarded_port, guest: forward[:guest], host: forward[:host], host_ip: _host_ip, gateway_ports: _gateway_ports
+          worker.vm.network :forwarded_port, **forward
         end
       end
 
@@ -264,6 +225,7 @@ Vagrant.configure("2") do |config|
 
         # Management Network
         libvirt.mgmt_attach = _server[:mgmt_attach].to_s == 'false' ? false : true;
+
         if _server[:mgmt_attach]
 
           libvirt.management_network_name = _management_network[:management_network_name];
@@ -315,59 +277,90 @@ Vagrant.configure("2") do |config|
         libvirt.qemu_use_agent = _server[:qemu_use_agent].to_s == 'true' ? true : false;
       end
 
-      if !_server[:ansible_playbook].nil?
-        _ansible_inventory_vars = {
-          server: _server,
-          management_network: _management_network,
-          lab: LAB,
-          is_provisioned: false
-        }
+      SERVER_COUNTER +=1
 
-        if provisioned?(_server[:hostname])
-          _ansible_inventory_vars[:is_provisioned] = true;
-        end
+      _server[:provisioners].each do |provisioner|
+        _provisioner = provisioner.is_a?(Hash) ? provisioner : PROVISIONERS[provisioner]
+        _provisioner_options = _provisioner[:options]
+        _provisioner_name = _provisioner[:name]
 
-        ANSIBLE_EXTRA_VARS.merge!("#{_server[:hostname]}": _ansible_inventory_vars)
-        if not _server[:ansible_deploy_individually]
-          ANSIBLE_LIMIT_HOSTS.append(_server[:hostname])
-        end
+        if _provisioner_options[:type].eql?("ansible")
+          _ansible_vagrant_configuration = {}
+          _ansible_vagrant_configuration = {
+            server: _server,
+            management_network: _management_network,
+            lab: LAB,
+            synced_folders: SYNCED_FOLDERS,
+            provisioners: PROVISIONERS,
+            hypervisors: HYPERVISORS,
+            servers: SERVERS,
+            is_provisioned: false
+          }
 
-        SERVER_COUNTER +=1
+          if provisioned?(_server[:hostname])
+            _ansible_vagrant_configuration[:is_provisioned] = true;
+          end
 
-        if SERVERS_COUNT == SERVER_COUNTER or _server[:ansible_deploy_individually]
-          if ANSIBLE_LIMIT_HOSTS.length != 0 or _server[:ansible_deploy_individually]
-            worker.vm.provision "ansible" do |ansible|
-              ansible.playbook = "#{_server[:ansible_playbook_dir]}/#{_server[:ansible_playbook]}"
-              ansible.playbook_command = _server[:ansible_playbook_command] ? _server[:ansible_playbook_command] : "ansible-playbook"
-              ansible.verbose = _server[:ansible_verbose]
-              ansible.become = _server[:ansible_become] ? true : false;
-              ansible.become_user = _server[:ansible_become_user] ? _server[:ansible_become_user] : 'root';
-              ansible.compatibility_mode = "2.0"
-              ansible.limit = _server[:ansible_deploy_individually] ? _server[:hostname] : ANSIBLE_LIMIT_HOSTS.join(',');
-              # ansible.limit = "all"
-              ansible.extra_vars = _server[:ansible_extra_vars].merge({ 'ANSIBLE_EXTRA_VARS': ANSIBLE_EXTRA_VARS })
-              ansible.raw_ssh_args = _server[:ansible_raw_ssh_args]
-              ansible.start_at_task = _server[:ansible_start_at_task]
-              ansible.tags = _server[:ansible_tags]
-              ansible.skip_tags = _server[:ansible_skip_tags]
-              ansible.inventory_path = _server[:ansible_inventory_path]
-              ansible.host_vars = _server[:ansible_host_vars] ? _server[:ansible_host_vars] : {}
-              ansible.groups = _server[:ansible_groups] ? _server[:ansible_groups] : {}
-              ansible.config_file = _server[:ansible_config_file]
-              ansible.vault_password_file = _server[:ansible_vault_password_file]
-              ansible.force_remote_user = _server[:ansible_force_remote_user]
-              ansible.raw_arguments = _server[:ansible_raw_arguments]
+          if _provisioner[:ansible_serial_deployment]
+            _custom_ansible_overrides = {
+              extra_vars: Vagrant::Util::DeepMerge.deep_merge(_provisioner_options.fetch(:extra_vars, {}), { 'ANSIBLE_EXTRA_VARS': _ansible_vagrant_configuration})
+            }
+            _custom_ansible_defaults = {
+              playbook: "#{_provisioner.fetch(:ansible_playbook_dir, 'ansible')}/#{_provisioner.fetch(:ansible_playbook)}",
+              limit: _server[:hostname]
+            }
+            _provisioner_options = _custom_ansible_defaults.merge(_provisioner_options.merge(_custom_ansible_overrides))
+          else
+            if not ANSIBLE_CUSTOM_OPTIONS.key?(:"#{_provisioner_name}")
+              ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"] = {
+                extra_vars: {},
+                limit_hosts: [],
+                provisioner: {}
+              }
             end
+
+            ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:extra_vars] = (_ansible_vagrant_configuration)
+            ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
+            ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:provisioner] = Vagrant::Util::DeepMerge.deep_merge(ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:provisioner], _provisioner)
+            if (SERVERS_COUNT == SERVER_COUNTER)
+              next
+            end
+            _provisioner_options = {
+              type: 'shell',
+              inline: "echo Skipping ansible serial deployment for #{_server[:hostname]}"
+            }
+          end
+        end
+        worker.vm.provision _provisioner_name, **_provisioner_options
+      end
+
+      if (SERVERS_COUNT == SERVER_COUNTER)
+        ANSIBLE_CUSTOM_OPTIONS.keys.each do |provisioner_name|
+
+          _provisioner = ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:provisioner]
+          _provisioner_options = _provisioner[:options]
+
+          if ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:limit_hosts].length != 0
+            _custom_ansible_overrides = {
+              extra_vars: Vagrant::Util::DeepMerge.deep_merge(_provisioner_options.fetch(:extra_vars, {}),({ 'ANSIBLE_EXTRA_VARS': ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:extra_vars] }))
+            }
+            _custom_ansible_defaults = {
+              playbook: "#{_provisioner.fetch(:ansible_playbook_dir, 'ansible')}/#{_provisioner.fetch(:ansible_playbook)}",
+              limit: _provisioner.fetch(:ansible_serial_deployment, false) ? _provisioner_options[:hostname] : ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:limit_hosts].join(',')
+            }
+            _provisioner_options = _custom_ansible_defaults.merge(_provisioner_options.merge(_custom_ansible_overrides))
+
+            worker.vm.provision provisioner_name, **_provisioner_options
           end
         end
       end
 
-
       worker.trigger.after [:destroy] do |trigger|
+        _cmd = ''
         trigger.on_error = :continue
         trigger.info = "Add DHCP host configuration for static management network IP"
 
-        if _server[:mgmt_attach]
+        if _server[:mgmt_attach] and _management_network[:mac]
           _cmd = del_dhcp_host_conf(
             _management_network[:management_network_name],
             _management_network[:management_network_address],
@@ -379,7 +372,7 @@ Vagrant.configure("2") do |config|
         end
 
         _server[:private_networks].each do |net|
-          if net[:type].eql? "dhcp"
+          if net[:type].eql? "dhcp" and net[:mac]
             _cmd += del_dhcp_host_conf(
               net[:libvirt__network_name],
               net[:libvirt__network_address],
@@ -391,7 +384,7 @@ Vagrant.configure("2") do |config|
           end
         end
 
-        if _cmd != ''
+        unless _cmd.empty?
           trigger.run = {inline: "bash -c \"#{_cmd}\""}
         end
       end

@@ -1,0 +1,11 @@
+---
+
+- hosts: "all"
+  gather_facts: yes
+  tasks:
+    - command: "echo Hello World"
+#    - debug: var=ANSIBLE_EXTRA_VARS
+    - debug: var=groups
+    - debug: var=testdict
+    - ansible.builtin.pause:
+       seconds: 5

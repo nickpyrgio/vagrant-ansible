@@ -1,0 +1,202 @@
+---
+
+synced_folders:
+  disabled: &disabled
+    :src: "."
+    :dest: "/vagrant"
+    :options:
+      :disabled: true
+  default_nfs: &default_nfs
+    :src: "."
+    :dest: "/vagrant"
+    :options:
+      :disabled: false
+  rsync_test: &rsync_test
+    :src: "."
+    :dest: /vagrant
+    :options:
+      :type: rsync
+      :rsync__args: ["--verbose", "--rsync-path='sudo rsync'", "--archive", "--delete", "-z"]
+
+provisioners:
+  hello_world: &hello_world
+    :name: hello_world
+    :options:
+      :type: shell
+      :inline: echo \"Hello $Name\"
+      :env:
+        Name: Nikos
+    :run: always
+    :before: :all
+  docker_setup: &docker_setup
+    :name: docker_setup
+    :options:
+      # https://developer.hashicorp.com/vagrant/docs/provisioning/shell#inline-scripts
+      :type: shell
+      :inline: |
+        DEBIAN_FRONTEND=noninteractive apt update
+        apt -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --assume-yes install docker docker-compose
+  libvirtd_setup: &libvirtd_setup
+    :name: libvirtd_setup
+    :options:
+      :type: shell
+      :path: scripts/vagrant_ansible_setup.sh
+      :run: once
+  # https://developer.hashicorp.com/vagrant/docs/provisioning/file
+  file_test: &file_test
+    :name: file_test
+    :options:
+      :type: file
+      :source: ./
+      :destination: ~/
+      :run: once
+  # https://developer.hashicorp.com/vagrant/docs/provisioning/ansible_common
+  ansible_provisioner_common: &ansible_provisioner_common
+    :name: ansible_common
+    :ansible_playbook_dir: ansible
+    :ansible_playbook: base_playbook.yml
+    :ansible_serial_deployment: no
+    :options: &ansible_provisioner_common_options
+      :type: ansible
+      :compatibility_mode: "2.0"
+      :verbose: "v"
+      :become: true
+      :become_user: root
+      :groups:
+        test_group1: ["vm1", "vm2", "vm3"]
+        test_group2: ["vm1"]
+  ansible: &ansible
+    <<: *ansible_provisioner_common
+    :ansible_playbook: base_playbook.yml
+    :name: ansible
+    :options:
+      <<: *ansible_provisioner_common_options
+      :extra_vars:
+        testdict:
+          subdict:
+            key: value
+  ansible2: &ansible2
+    <<: *ansible_provisioner_common
+    :ansible_playbook: base_playbook2.yml
+    :name: ansible2
+    :options:
+      <<: *ansible_provisioner_common_options
+      :extra_vars:
+        testdict:
+          subdict:
+            key: value
+
+networks:
+  # This network will be used if server management_network is not overriden
+  default_management_network: &default_management_network
+    :management_network_name: 'vagrant-libvirt'
+    :management_network_address: "192.168.121.0/24"
+    :management_network_mtu: "1500"
+    :management_network_keep: false
+
+  bridge_network: &bridge_network
+    :dev: bridge0
+    :type: bridge
+    :auto_config: false
+
+  private_network: &private_network
+    :libvirt__network_name: private_test
+    :libvirt__network_address: "10.0.2.0"
+    :libvirt__netmask: '255.255.255.0'
+    :libvirt__forward_mode: none
+    :libvirt__always_destroy: true
+    :type: dhcp
+    :auto_config: false
+
+hypervisors:
+  :localhost:
+    :hypervisor_host: null
+    :hypervisor_user: null
+    :hypervisor_id_ssh_key_file: null
+    :hypervisor_connect_via_ssh: null
+
+forwards:
+  :ssh: &forward_ssh
+    :host_ip: "0.0.0.0"
+    :guest: 22
+  :http: &forward_http
+    :host_ip: "0.0.0.0"
+    :guest: 80
+  :https: &forward_https
+    :host_ip: "0.0.0.0"
+    :guest: 443
+
+default_global_settings:
+  :cpus: 1
+  :ram: 1024
+  :hypervisor_name: "localhost"
+  :box: "debian/bookworm64"
+  :forwards: []
+  :private_networks: []
+  :public_networks: []
+  :storage: []
+  :mgmt_attach: true
+  :server_index_weight: 0 # If unchanged vms will be created according to the order defined.
+  :synced_folders:
+    - disabled
+  # Custom provisioners
+  :provisioners: []
+
+labs:
+  testing:
+    # LAB SPECIFIC SETTINGS
+    lab_settings:
+      :provisioners:
+        - hello_world
+        - *ansible
+    servers:
+      - :hostname: vm1
+        :server_index_weight: 11 # this will be the last vm
+        :synced_folders:
+          - *default_nfs
+          - *rsync_test
+        :management_network: *default_management_network
+      - :hostname: libvirtd
+        :server_index_weight: -1 # this will be the first vm
+        :provisioners:
+          - hello_world
+          - libvirtd_setup
+      - :hostname: vm2
+        :provisioners:
+          - <<: *ansible2
+            :options:
+              <<: *ansible_provisioner_common_options
+              :before: ansible
+          - hello_world
+        :synced_folders:
+          - *default_nfs
+          - *rsync_test
+        :management_network: *default_management_network
+      - :hostname: vm3
+        :provisioners:
+          - <<: *ansible2
+            :options:
+              <<: *ansible_provisioner_common_options
+              :before: ansible
+          - hello_world
+        :synced_folders:
+          - *default_nfs
+          - *rsync_test
+        :management_network: *default_management_network
+      - :hostname: vm4
+        :provisioners:
+          - <<: *ansible2
+            :options:
+              <<: *ansible_provisioner_common_options
+              :before: ansible
+          - hello_world
+        :synced_folders:
+          - *default_nfs
+          - *rsync_test
+        :management_network: *default_management_network
+      - :hostname: disabled_host
+        :disabled: yes
+        :synced_folders:
+          - *default_nfs
+          - *rsync_test
+        :management_network: *default_management_network
