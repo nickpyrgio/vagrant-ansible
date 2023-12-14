@@ -26,8 +26,8 @@ provisioners:
       :inline: echo \"Hello $Name\"
       :env:
         Name: Nikos
-    :run: always
-    :before: :all
+      :run: always
+      :before: :all
   docker_setup: &docker_setup
     :name: docker_setup
     :options:
@@ -51,6 +51,12 @@ provisioners:
       :destination: ~/
       :run: once
   # https://developer.hashicorp.com/vagrant/docs/provisioning/ansible_common
+  default_ansible: &default_ansible
+    :name: default_ansible
+    :options:
+      :type: ansible
+      :extra_vars:
+        testdict: other_folder
   ansible_provisioner_common: &ansible_provisioner_common
     :name: ansible_common
     :ansible_playbook_dir: ansible
@@ -132,6 +138,7 @@ default_global_settings:
   :hypervisor_name: "localhost"
   :box: "debian/bookworm64"
   :forwards: []
+  :management_network: *default_management_network
   :private_networks: []
   :public_networks: []
   :storage: []
@@ -145,19 +152,23 @@ default_global_settings:
 labs:
   testing:
     # LAB SPECIFIC SETTINGS
-    lab_settings:
-      :provisioners:
-        - hello_world
-        - *ansible
+    lab_settings: {}
     servers:
       - :hostname: vm1
-        :server_index_weight: 11 # this will be the last vm
+        :ansible_playbook_dir: ansible
+        :ansible_playbook: base_playbook.yml
+        :ansible_extra_vars:
+          testdict:
+            dir: folder
+        :server_index_weight: 11 # this will be the last vm to be created
         :synced_folders:
           - *default_nfs
           - *rsync_test
         :management_network: *default_management_network
+        :provisioners:
+          - default_ansible
       - :hostname: libvirtd
-        :server_index_weight: -1 # this will be the first vm
+        :server_index_weight: -1 # this will be the first vm to be created
         :provisioners:
           - hello_world
           - libvirtd_setup
@@ -166,7 +177,6 @@ labs:
           - <<: *ansible2
             :options:
               <<: *ansible_provisioner_common_options
-              :before: ansible
           - hello_world
         :synced_folders:
           - *default_nfs
@@ -177,7 +187,6 @@ labs:
           - <<: *ansible2
             :options:
               <<: *ansible_provisioner_common_options
-              :before: ansible
           - hello_world
         :synced_folders:
           - *default_nfs
@@ -188,7 +197,6 @@ labs:
           - <<: *ansible2
             :options:
               <<: *ansible_provisioner_common_options
-              :before: ansible
           - hello_world
         :synced_folders:
           - *default_nfs

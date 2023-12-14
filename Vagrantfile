@@ -2,11 +2,13 @@
 # vi: set ft=ruby :
 
 # Require YAML module
+VAGRANTFILE_DIR = File.dirname(File.expand_path(__FILE__))
+
 require 'yaml'
 require 'nokogiri'
 require 'ipaddr'
-
-require "./vagrant-ansible-provision.conf.rb"
+# This file points to the location of the vagrant settings file and which lab to load
+require "#{VAGRANTFILE_DIR}/vagrant-ansible-provision.conf.rb"
 
 # VAGRANT_LOG=info vagrant up
 # VAGRANT_EXPERIMENTAL="typed_triggers"
@@ -86,32 +88,34 @@ def del_dhcp_host_conf(network_name, network_address, network_mac, hostname, ip_
 end
 
 # Global variables
-CURRENT_DIR = File.dirname(File.expand_path(__FILE__))
+
+# These variables are load from vagrant-ansible-provision.conf.rb file.
 SETTINGS_FILE = $SETTINGS_FILE
 LAB = $LAB ? $LAB : "default"
 
 if File.file?("#{SETTINGS_FILE}")
   SETTINGS = YAML.load_file("#{SETTINGS_FILE}", aliases: true)
 else
-  SETTINGS = YAML.load_file("#{CURRENT_DIR}/servers.yml.dist", aliases: true)
+  SETTINGS = YAML.load_file("#{VAGRANTFILE_DIR}/servers.yml.dist", aliases: true)
 end
 
-SYNCED_FOLDERS = SETTINGS['synced_folders'] ? SETTINGS['synced_folders'] : {};
-PROVISIONERS = SETTINGS['provisioners'] ? SETTINGS['provisioners'] : {};
-HYPERVISORS = SETTINGS['hypervisors']  ? SETTINGS['hypervisors'] : {};
-NETWORKS = SETTINGS['networks'] ? SETTINGS['networks'] : {};
+SYNCED_FOLDERS = SETTINGS.fetch('synced_folders', {})
+PROVISIONERS = SETTINGS.fetch('provisioners', {})
+HYPERVISORS = SETTINGS.fetch('hypervisors', {})
 DEFAULT_GLOBAL_SETTINGS = SETTINGS['default_global_settings']
 SERVERS = []
 SERVERS = initializeLabServerList(LAB)
 SERVERS_COUNT = SERVERS.length
 SERVER_COUNTER = 0
-ANSIBLE_CUSTOM_OPTIONS = {}
+ANSIBLE_MULTIMACHINE_SETTINGS = {}
 
 Vagrant.configure("2") do |config|
 
+  config.vagrant.plugins = "vagrant-libvirt"
+
   SERVERS.each do |_server|
 
-    _management_network = _server[:management_network] ? _server[:management_network] : NETWORKS['default_management_network'];
+    _management_network = _server.fetch(:management_network);
 
     if _server[:disabled]
       SERVER_COUNTER +=1
@@ -236,6 +240,7 @@ Vagrant.configure("2") do |config|
           libvirt.management_network_keep = _management_network[:management_network_keep].to_s == 'false' ? false : true;
           libvirt.management_network_mode = _management_network[:management_network_mode] ? _management_network[:management_network_mode] : 'nat';
           libvirt.management_network_domain = _management_network[:management_network_domain] ? _management_network[:management_network_domain] : nil;
+          libvirt.management_network_model_type = _management_network[:management_network_model_type] ? _management_network[:management_network_model_type] : 'virtio';
           if !_management_network[:mac].nil?
             libvirt.management_network_mac = _management_network[:mac];
           end
@@ -294,7 +299,8 @@ Vagrant.configure("2") do |config|
             provisioners: PROVISIONERS,
             hypervisors: HYPERVISORS,
             servers: SERVERS,
-            is_provisioned: false
+            is_provisioned: false,
+            vagrantfile_dir: VAGRANTFILE_DIR
           }
 
           if provisioned?(_server[:hostname])
@@ -330,8 +336,8 @@ Vagrant.configure("2") do |config|
           _provisioner_options = Vagrant::Util::DeepMerge.deep_merge(_provisioner_options, _custom_ansible_overrides)
 
           if not _provisioner[:ansible_serial_deployment]
-            if not ANSIBLE_CUSTOM_OPTIONS.key?(:"#{_provisioner_name}")
-              ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"] = {
+            if not ANSIBLE_MULTIMACHINE_SETTINGS.key?(:"#{_provisioner_name}")
+              ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"] = {
                 extra_vars: {},
                 limit_hosts: [],
                 provisioner: {},
@@ -339,30 +345,33 @@ Vagrant.configure("2") do |config|
               }
             end
 
-            ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:extra_vars] = (_ansible_vagrant_configuration)
-            ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
-            ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:provisioner] = Vagrant::Util::DeepMerge.deep_merge(ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:provisioner], _provisioner)
-            ANSIBLE_CUSTOM_OPTIONS[:"#{_provisioner_name}"][:provisioner_options] = _provisioner_options
+            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:extra_vars] = (_ansible_vagrant_configuration)
+            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
+            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner] = Vagrant::Util::DeepMerge.deep_merge(ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner], _provisioner)
+            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner_options] = Vagrant::Util::DeepMerge.deep_merge(ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner_options], _provisioner_options)
+
             if (SERVERS_COUNT == SERVER_COUNTER)
               next
             end
+
             _provisioner_options = {
               type: 'shell',
               inline: "echo Skipping ansible serial deployment for #{_server[:hostname]}"
             }
+
           end
         end
         worker.vm.provision _provisioner_name, **_provisioner_options
       end
 
       if (SERVERS_COUNT == SERVER_COUNTER)
-        ANSIBLE_CUSTOM_OPTIONS.keys.each do |provisioner_name|
+        ANSIBLE_MULTIMACHINE_SETTINGS.keys.each do |provisioner_name|
 
-          _provisioner = ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:provisioner]
-          _provisioner_options = ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:provisioner_options]
-          _provisioner_options[:limit] = ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:limit_hosts]
+          _provisioner = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:provisioner]
+          _provisioner_options = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:provisioner_options]
+          _provisioner_options[:limit] = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:limit_hosts]
 
-          if ANSIBLE_CUSTOM_OPTIONS[:"#{provisioner_name}"][:limit_hosts].length != 0
+          if ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:limit_hosts].length != 0
             worker.vm.provision provisioner_name, **_provisioner_options
           end
         end
@@ -401,8 +410,6 @@ Vagrant.configure("2") do |config|
           trigger.run = {inline: "bash -c \"#{_cmd}\""}
         end
       end
-
     end
-    #end config
   end
 end
