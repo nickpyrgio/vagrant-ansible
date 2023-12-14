@@ -74,15 +74,11 @@ default_global_settings:
   :public_networks: []
   :storage: []
   :mgmt_attach: true
-  # :ansible_playbook: "/path/to/playbook" # if not set ansible provisioner will be skipped
-  :ansible_deploy_individually: false
-  :ansible_raw_ssh_args: []
-  :ansible_verbose: "v"
-  :ansible_host_vars: {}
-  :ansible_group_vars: {}
-  :ansible_become: true
-  :ansible_extra_vars:
-    var: "value"
+  :server_index_weight: 0 # If unchanged vms will be created according to the order defined.
+  :synced_folders:
+    - disabled
+  # Custom provisioners
+  :provisioners: []
 
 labs:
   default:
