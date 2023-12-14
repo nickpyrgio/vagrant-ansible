@@ -11,21 +11,11 @@ provisioners:
   docker_setup: &docker_setup
     :name: docker_setup
     :options:
-      # https://developer.hashicorp.com/vagrant/docs/provisioning/shell#inline-scripts
       :type: shell
       :inline: |
         DEBIAN_FRONTEND=noninteractive apt update
         apt -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --assume-yes install docker docker-compose
-        echo Hello World quotes \"\"
-      :run: always
-  # https://developer.hashicorp.com/vagrant/docs/provisioning/file
-  file_test: &file_test
-    :name: file_test
-    :options:
-      :type: file
-      :source: ./Vagrantfile
-      :destination: Vagrantfile
-      :run: never
+      :run: once
   ansible_provisioner_common: &ansible_provisioner_common
     :name: ansible_common
     :ansible_playbook_dir: ansible
@@ -86,8 +76,6 @@ labs:
     lab_settings: {}
     servers:
       - :hostname: default
-        :scripts:
-          - docker_setup
         :forwards:
           - <<: *forward_ssh
             :host: 2222
