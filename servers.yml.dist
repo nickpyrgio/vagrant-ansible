@@ -1,40 +1,12 @@
 ---
-
-synced_folders:
-  disabled: &disabled
-    :src: "."
-    :dest: "/vagrant"
-    :options:
-      :disabled: true
-
-provisioners:
-  docker_setup: &docker_setup
-    :name: docker_setup
-    :options:
-      :type: shell
-      :inline: |
-        DEBIAN_FRONTEND=noninteractive apt update
-        apt -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --assume-yes install docker docker-compose
-      :run: once
-  ansible_provisioner_common: &ansible_provisioner_common
-    :name: ansible_common
-    :ansible_playbook_dir: ansible
-    :ansible_playbook: base_playbook.yml
-    :ansible_serial_deployment: no
-    :options: &ansible_provisioner_common_options
-      :type: ansible
-      :compatibility_mode: "2.0"
-      :verbose: "v"
-      :become: true
-      :become_user: root
-
+# NETWORKS DEFINTIONS
 networks:
-  # This network will be used if server management_network is not overriden
-  default_management_network: &default_management_network
-    :management_network_name: 'vagrant-libvirt'
-    :management_network_address: "192.168.121.0/24"
-    :management_network_mtu: "1500"
-    :management_network_keep: false
+
+# PROVISIONERS DEFINTIONS
+provisioners:
+
+# SYNCED_FOLDERS DEFINTIONS
+synced_folders:
 
 hypervisors:
   :localhost:
@@ -43,43 +15,54 @@ hypervisors:
     :hypervisor_id_ssh_key_file: null
     :hypervisor_connect_via_ssh: null
 
-forwards:
-  :ssh: &forward_ssh
-    :host_ip: "0.0.0.0"
-    :guest: 22
-  :http: &forward_http
-    :host_ip: "0.0.0.0"
-    :guest: 80
-  :https: &forward_https
-    :host_ip: "0.0.0.0"
-    :guest: 443
-
+# Default values for all servers. Override on lab level, or server level
 default_global_settings:
-  :cpus: 1
-  :ram: 1024
-  :hypervisor_name: "localhost"
-  :box: "debian/bookworm64"
+  # libvirt provider context
+  :hypervisor_name: "localhost" # Always define
+  :ram: 1024 # Always define
+  :cpus: 1 # Always define
+  :cpuaffinitiy: null # Optional dict
+  :cputopology: null # Optional string
+  :numa_nodes: null # Optional string
+  :nested: false # Optional, defaults to false
+  :autostart: false # Optional defaults to false
+  :qemu_use_agent: false # Optional defaults to false
+  :mgmt_attach: true # Defaults to false, define if management network is required
+  :management_network: &management_network # Always define
+    # Always set when mgmt_attach is true
+    :management_network_name: 'vagrant-libvirt'
+    :management_network_address: "192.168.121.0/24"
+    # Optional. These are the default values.
+    :management_network_keep: false
+    :management_network_autostart: true
+    :management_network_domain: null
+    :management_network_mtu: null
+    :management_network_iface_name: null
+    :management_network_mode: null
+    :management_network_model_type: virtio
+    :mac: null
+  # vm context https://developer.hashicorp.com/vagrant/docs/vagrantfile/machine_settings
+  :box: "debian/bookworm64" # Always define
+  :box_url: null # Optional string
+  :synced_folders: # Always define disabled
+    - disabled: &disabled
+      :src: "."
+      :dest: "/vagrant"
+      :options:
+        :disabled: true
+  # Optional
   :forwards: []
   :private_networks: []
   :public_networks: []
   :storage: []
-  :mgmt_attach: true
   :server_index_weight: 0 # If unchanged vms will be created according to the order defined.
-  :synced_folders:
-    - disabled
   # Custom provisioners
   :provisioners: []
 
 labs:
   default:
-    # LAB SPECIFIC SETTINGS
-    lab_settings: {}
     servers:
-      - :hostname: default
-        :forwards:
-          - <<: *forward_ssh
-            :host: 2222
-          - <<: *forward_http
-            :host: 8080
-          - <<: *forward_https
-            :host: 8443
+      - :hostname: node1
+      - :hostname: node2
+      - :hostname: node3
+      - :hostname: node4

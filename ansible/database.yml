@@ -3,9 +3,12 @@
 - hosts: "all"
   gather_facts: yes
   tasks:
+    - name: Wait 600 seconds for target connection to become reachable/usable
+      ansible.builtin.wait_for_connection:
     - command: "echo Hello World"
 #    - debug: var=ANSIBLE_EXTRA_VARS
     - debug: var=groups
-    - debug: var=testdict
+    - debug: var=installdb
+    - debug: var=database_group_var
     - ansible.builtin.pause:
        seconds: 5

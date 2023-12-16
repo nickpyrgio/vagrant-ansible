@@ -1,5 +1,6 @@
 ---
 
+# SYNCED_FOLDERS DEFINTIONS
 synced_folders:
   disabled: &disabled
     :src: "."
@@ -11,56 +12,29 @@ synced_folders:
     :dest: "/vagrant"
     :options:
       :disabled: false
-  rsync_test: &rsync_test
-    :src: "."
-    :dest: /vagrant
-    :options:
-      :type: rsync
-      :rsync__args: ["--verbose", "--rsync-path='sudo rsync'", "--archive", "--delete", "-z"]
 
+# NETWORKS DEFINTIONS
+networks:
+  db_private_network: &db_private_network
+    :libvirt__network_name: db_private_network
+    # :libvirt__network_address: "10.0.2.0"
+    :libvirt__netmask: '255.255.255.0'
+    :libvirt__forward_mode: veryisolated
+    :libvirt__always_destroy: true
+    :libvirt__dhcp_enabled: false
+
+# PROVISIONERS DEFINTIONS
 provisioners:
-  hello_world: &hello_world
-    :name: hello_world
-    :options:
-      :type: shell
-      :inline: echo \"Hello $Name\"
-      :env:
-        Name: Nikos
-      :run: always
-      :before: :all
-  docker_setup: &docker_setup
-    :name: docker_setup
-    :options:
-      # https://developer.hashicorp.com/vagrant/docs/provisioning/shell#inline-scripts
-      :type: shell
-      :inline: |
-        DEBIAN_FRONTEND=noninteractive apt update
-        apt -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --assume-yes install docker docker-compose
   libvirtd_setup: &libvirtd_setup
     :name: libvirtd_setup
-    :options:
+    :options: &libvirtd_setup_options
       :type: shell
-      :path: scripts/vagrant_ansible_setup.sh
+      :path: scripts/libvirtd_setup.sh
       :run: once
-  # https://developer.hashicorp.com/vagrant/docs/provisioning/file
-  file_test: &file_test
-    :name: file_test
-    :options:
-      :type: file
-      :source: ./
-      :destination: ~/
-      :run: once
-  # https://developer.hashicorp.com/vagrant/docs/provisioning/ansible_common
-  default_ansible: &default_ansible
-    :name: default_ansible
-    :options:
-      :type: ansible
-      :extra_vars:
-        testdict: other_folder
   ansible_provisioner_common: &ansible_provisioner_common
     :name: ansible_common
     :ansible_playbook_dir: ansible
-    :ansible_playbook: base_playbook.yml
+    :ansible_playbook: sample_playbook.yml
     :ansible_serial_deployment: no
     :options: &ansible_provisioner_common_options
       :type: ansible
@@ -69,142 +43,158 @@ provisioners:
       :become: true
       :become_user: root
       :groups:
-        test_group1: ["vm1", "vm2", "vm3"]
-        test_group2: ["vm1"]
-  ansible: &ansible
+        database_servers: ["db1", "db2", "db3"]
+        application_servers: ["appsrv1", "appsrv2"]
+        loadbalancer_servers: ["lb1", "lb2"]
+        database_servers:vars:
+          database_group_var: "This is a database_servers group ansible variable"
+  bootstrap_deployment: &bootstrap_deployment
     <<: *ansible_provisioner_common
-    :ansible_playbook: base_playbook.yml
-    :name: ansible
-    :options:
+    :name: bootstrap_deployment
+    :ansible_serial_deployment: false
+    :options: &bootstrap_deployment_options
       <<: *ansible_provisioner_common_options
-      :extra_vars:
-        testdict:
-          subdict:
-            key: value
-  ansible2: &ansible2
+      :before: :all
+      :playbook: ansible/bootstrap.yml
+  database_deployment: &database_deployment
     <<: *ansible_provisioner_common
-    :ansible_playbook: base_playbook2.yml
-    :name: ansible2
-    :options:
+    :ansible_playbook: database.yml
+    :name: database_deployment
+    :options: &database_deployment_options
       <<: *ansible_provisioner_common_options
+      :limit: database_servers
       :extra_vars:
-        testdict:
-          subdict:
+        installdb:
+          db1:
             key: value
-
-networks:
-  # This network will be used if server management_network is not overriden
-  default_management_network: &default_management_network
-    :management_network_name: 'vagrant-libvirt'
-    :management_network_address: "192.168.121.0/24"
-    :management_network_mtu: "1500"
-    :management_network_keep: false
-
-  bridge_network: &bridge_network
-    :dev: bridge0
-    :type: bridge
-    :auto_config: false
-
-  private_network: &private_network
-    :libvirt__network_name: private_test
-    :libvirt__network_address: "10.0.2.0"
-    :libvirt__netmask: '255.255.255.0'
-    :libvirt__forward_mode: none
-    :libvirt__always_destroy: true
-    :type: dhcp
-    :auto_config: false
+          db2:
+            key: value
+  appserver_deployment: &appserver_deployment
+    <<: *ansible_provisioner_common
+    :ansible_playbook: appsrv.yml
+    :name: appserver_deployment
+    :options: &appserver_deployment_options
+      <<: *ansible_provisioner_common_options
+      :limit:  application_servers
+  loadbalancer_deployment: &loadbalancer_deployment
+    <<: *ansible_provisioner_common
+    :name: loadbalancer_deployment
+    :options: &loadbalancer_deployment_options
+      <<: *ansible_provisioner_common_options
+      :limit:  lb1
+      :playbook: ansible/loadbalancer.yml
 
 hypervisors:
   :localhost:
-    :hypervisor_host: null
-    :hypervisor_user: null
-    :hypervisor_id_ssh_key_file: null
-    :hypervisor_connect_via_ssh: null
+    :uri:
+  :libvirt1:
+    :hypervisor_host: libvirt1
+    :hypervisor_user: root
+    :hypervisor_id_ssh_key_file: id_rsa
+    :hypervisor_connect_via_ssh: true
+    :hypervisor_proxy_command: ssh {host} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -l {username} -i {id_ssh_key_file} -W %h:%p
 
-forwards:
-  :ssh: &forward_ssh
-    :host_ip: "0.0.0.0"
-    :guest: 22
-  :http: &forward_http
-    :host_ip: "0.0.0.0"
-    :guest: 80
-  :https: &forward_https
-    :host_ip: "0.0.0.0"
-    :guest: 443
-
+# Default values for all servers. Override on lab level, or server level
 default_global_settings:
-  :cpus: 1
-  :ram: 1024
-  :hypervisor_name: "localhost"
-  :box: "debian/bookworm64"
+  :hypervisor_name: "localhost" # Always define
+  :ram: 1024 # Always define
+  :cpus: 1 # Always define
+  :mgmt_attach: true # Defaults to false, define if management network is required
+  :management_network: &management_network # Always define
+    # Always set when mgmt_attach is true
+    :management_network_name: 'vagrant-libvirt'
+    :management_network_address: "192.168.121.0/24"
+  :box: "debian/bookworm64" # Always define
+  :synced_folders:
+    - disabled
+  # Optional
   :forwards: []
-  :management_network: *default_management_network
   :private_networks: []
   :public_networks: []
   :storage: []
-  :mgmt_attach: true
-  :server_index_weight: 0 # If unchanged vms will be created according to the order defined.
-  :synced_folders:
-    - disabled
+  :server_index_weight: 0 # If unchanged vms will be created in the order defined.
   # Custom provisioners
   :provisioners: []
 
 labs:
-  testing:
-    # LAB SPECIFIC SETTINGS
-    lab_settings: {}
+  libvirt:
+    lab_settings:
+      :nested: true
+      :provisioners:
+        - <<: *libvirtd_setup
+          :options:
+            <<: *libvirtd_setup_options
+            :env:
+              LIBVIRTD_USER: vagrant
+              LIBVIRTD_MANAGEMENT_NETWORK_NAME: &libvirt1_management_network libvirt1_management_network
+              LIBVIRTD_MANAGEMENT_BRIDGE_NAME: libvirt1
+              LIBVIRTD_MANAGEMENT_NETWORK_PREFIX: "10.0.0."
+              LIBVIRTD_MANAGEMENT_HOST_IP_SUFFIX: "254"
+              LIBVIRTD_MANAGEMENT_HOST_IP_MAC: aa:aa:aa:8a:32:54
+              LIBVIRTD_MANAGEMENT_NETWORK_DHCP_START: "1"
+              LIBVIRTD_MANAGEMENT_NETWORK_DHCP_END: "200"
+              LIBVIRTD_MANAGEMENT_NETWORK_ADDRESS: &libvirt1_management_network_address "10.0.0.0/24"
     servers:
-      - :hostname: vm1
-        :ansible_playbook_dir: ansible
-        :ansible_playbook: base_playbook.yml
-        :ansible_extra_vars:
-          testdict:
-            dir: folder
-        :server_index_weight: 11 # this will be the last vm to be created
-        :synced_folders:
-          - *default_nfs
-          - *rsync_test
-        :management_network: *default_management_network
+      - :hostname: &libvirt1_hostname libvirt1
+        :environment_file_path: environment.rb
+        :ram: 8196
+        :cpus: 4
+        :ip_address_offset: 254 # It will get the ip 192.168.121.254/24 by dhcp
+        :management_network:
+          <<: *management_network
+          :mac: aa:aa:aa:95:12:54
+  webapp: # Set the value of each lab in vagrant-ansible-provision.conf.rb
+    lab_settings:
+      :cpus: 2
+      :hypervisor_name: *libvirt1_hostname
+      :management_network:
+        :management_network_name: *libvirt1_management_network
+        :management_network_address: *libvirt1_management_network_address
+      :provisioners:
+        - *bootstrap_deployment
+        - *database_deployment
+        - *appserver_deployment
+        - *loadbalancer_deployment
+    servers:
+      - :hostname: db1
+        :ram: 512M
+        :server_index_weight: 1
+        :private_networks:
+          - <<: *db_private_network
+            :ip: "10.20.30.11"
+            :libvirt__iface_name: guest_dbif1
+        :storage: &db_storage
+          - :size: 10G
+            :pool: default
+      - :hostname: db2
+        :ram: 512M
+        :server_index_weight: 2
+        :private_networks:
+          - <<: *db_private_network
+            :ip: "10.20.30.12"
+            # :libvirt__adapter: 2
+            :libvirt__iface_name: guest_dbif2
+        :storage: *db_storage
+      - :hostname: appsrv1
+        :server_index_weight: 3
+      - :hostname: appsrv2
+        :server_index_weight: 4
+      - :hostname: lb1
+        :cpus: 1
+        :server_index_weight: 5
+      - :hostname: appsrv-standalone
+        :server_index_weight: 6
         :provisioners:
-          - default_ansible
-      - :hostname: libvirtd
-        :server_index_weight: -1 # this will be the first vm to be created
-        :provisioners:
-          - hello_world
-          - libvirtd_setup
-      - :hostname: vm2
-        :provisioners:
-          - <<: *ansible2
+          - <<: *appserver_deployment
+            # :name: appserver_standalone_deployment
+            :ansible_serial_deployment: true
             :options:
-              <<: *ansible_provisioner_common_options
-          - hello_world
-        :synced_folders:
-          - *default_nfs
-          - *rsync_test
-        :management_network: *default_management_network
-      - :hostname: vm3
-        :provisioners:
-          - <<: *ansible2
-            :options:
-              <<: *ansible_provisioner_common_options
-          - hello_world
-        :synced_folders:
-          - *default_nfs
-          - *rsync_test
-        :management_network: *default_management_network
-      - :hostname: vm4
-        :provisioners:
-          - <<: *ansible2
-            :options:
-              <<: *ansible_provisioner_common_options
-          - hello_world
-        :synced_folders:
-          - *default_nfs
-          - *rsync_test
-        :management_network: *default_management_network
-      - :hostname: disabled_host
-        :disabled: yes
-        :synced_folders:
-          - *default_nfs
-          - *rsync_test
-        :management_network: *default_management_network
+              <<: *appserver_deployment_options
+      - :hostname: db3 # Add new server and rerun vagrant up --provision-with database_deployment
+        :ram: 512M
+        :server_index_weight: 7 # This will make sure the playbook starts after this new server is created
+        :storage: *db_storage
+        :private_networks:
+          - <<: *db_private_network
+            :ip: "10.20.30.13"
+            :libvirt__iface_name: guest_dbif3

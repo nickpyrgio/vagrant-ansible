@@ -16,8 +16,13 @@ require "#{VAGRANTFILE_DIR}/vagrant-ansible-provision.conf.rb"
 def initializeLabServerList(lab)
   _server_list = SETTINGS['labs']["#{lab}"]['servers'].each
   _server_list.each do | server |
+
     _lab_settings = SETTINGS['labs']["#{lab}"]['lab_settings'] ? SETTINGS['labs']["#{lab}"]['lab_settings'] : {}
     _server = DEFAULT_GLOBAL_SETTINGS.merge(_lab_settings).merge(server)
+
+    if _server[:environment_file_path]
+      require File.absolute_path(_server[:environment_file_path], VAGRANTFILE_DIR)
+    end
     SERVERS.append(_server)
   end
   return SERVERS.sort_by { |_srv| _srv.fetch(:server_index_weight, 0) }
@@ -115,12 +120,12 @@ Vagrant.configure("2") do |config|
 
   SERVERS.each do |_server|
 
-    _management_network = _server.fetch(:management_network);
-
     if _server[:disabled]
       SERVER_COUNTER +=1
       next
     end
+
+    _management_network = _server.fetch(:management_network);
 
     config.vm.define _server[:hostname] do |worker|
 
@@ -158,7 +163,7 @@ Vagrant.configure("2") do |config|
       worker.trigger.after :"VagrantPlugins::ProviderLibvirt::Action::CreateNetworks", type: :action do |trigger|
         _cmd = ''
         trigger.on_error = :continue
-        trigger.info = "Add DHCP host configuration for static management network IP"
+        trigger.info = "Add DHCP host configuration for static ma      nagement network IP"
 
         if _server[:mgmt_attach] and _management_network[:mac]
           _cmd += add_dhcp_host_conf(
@@ -188,6 +193,7 @@ Vagrant.configure("2") do |config|
       end
 
       # SYNCED FOLDERS
+
       _server[:synced_folders].each do |folder|
         _src = folder.is_a?(Hash) ? folder[:src] : SYNCED_FOLDERS[folder][:src];
         _dest = folder.is_a?(Hash) ? folder[:dest] : SYNCED_FOLDERS[folder][:dest];
@@ -219,17 +225,47 @@ Vagrant.configure("2") do |config|
 
       worker.vm.provider :libvirt do |libvirt|
 
-        # Libvirt host
-        libvirt.host = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_host];
-        libvirt.username = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_user];
-        libvirt.id_ssh_key_file = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_id_ssh_key_file];
-        libvirt.connect_via_ssh = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_connect_via_ssh];
+        # Libvirt hypervisor connection Option
+        if !HYPERVISORS[:"#{_server[:hypervisor_name]}"][:uri].nil?
+          libvirt.uri = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:uri]
+        else
+          libvirt.host = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_host]
+          libvirt.username = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_user]
+          libvirt.password = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:password]
+          libvirt.id_ssh_key_file = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_id_ssh_key_file]
+          libvirt.connect_via_ssh = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_connect_via_ssh]
+        end
         libvirt.driver = "kvm"
-        libvirt.default_prefix = "#{LAB}_";
+        libvirt.proxy_command = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_proxy_command]
 
-        # Management Network
+        # Domain Specific Options
+        libvirt.default_prefix = "#{LAB}_";
+        libvirt.title = _server.fetch(:title, _server[:hostname])
+        libvirt.description = _server.fetch(:description, _server[:hostname])
+        libvirt.cpus = _server[:cpus].to_s;
+        libvirt.memory = _server[:ram].to_s;
+        libvirt.autostart = _server[:autostart].to_s == 'true' ?  true : false;
+        libvirt.nested = _server[:nested].to_s == 'true' ?  true : false;
+        libvirt.qemu_use_agent = _server[:qemu_use_agent].to_s == 'true' ? true : false;
         libvirt.mgmt_attach = _server[:mgmt_attach].to_s == 'false' ? false : true;
 
+        if !_server[:cpuaffinitiy].nil?
+          libvirt.cpuaffinitiy _server[:cpuaffinitiy];
+        end
+
+        if !_server[:cputopology].nil?
+          libvirt.cputopology = _server[:cputopology].to_s;
+        end
+
+        if !_server[:cpuset].nil?
+          libvirt.cpus = _server[:cpuset].to_s;
+        end
+
+        if !_server[:numa_nodes].nil?
+          libvirt.numa_nodes = _server[:numa_nodes].to_s;
+        end
+
+        # Management Network
         if _server[:mgmt_attach]
 
           libvirt.management_network_name = _management_network[:management_network_name];
@@ -250,36 +286,6 @@ Vagrant.configure("2") do |config|
         _server[:storage].each do |disk|
           libvirt.storage :file, disk;
         end
-
-        # Cpu
-        libvirt.cpus = _server[:cpus].to_s;
-
-        if !_server[:cpuaffinitiy].nil?
-          libvirt.cpuaffinitiy _server[:cpuaffinitiy];
-        end
-
-        if !_server[:cputopology].nil?
-          libvirt.cputopology = _server[:cputopology].to_s;
-        end
-
-        if !_server[:cpuset].nil?
-          libvirt.cpus = _server[:cpuset].to_s;
-        end
-
-        if !_server[:numa_nodes].nil?
-          libvirt.numa_nodes = _server[:numa_nodes].to_s;
-        end
-
-        libvirt.autostart = _server[:autostart].to_s == 'true' ?  true : false;
-
-        #Enable nested virtualization
-        libvirt.nested = _server[:nested].to_s == 'true' ?  true : false;
-
-        # Memory
-        libvirt.memory = _server[:ram].to_s;
-
-        # Qemu agent
-        libvirt.qemu_use_agent = _server[:qemu_use_agent].to_s == 'true' ? true : false;
       end
 
       SERVER_COUNTER +=1
@@ -288,6 +294,7 @@ Vagrant.configure("2") do |config|
         _provisioner = provisioner.is_a?(Hash) ? provisioner : PROVISIONERS[provisioner]
         _provisioner_options = _provisioner[:options]
         _provisioner_name = _provisioner[:name]
+        _limit_set = _provisioner_options.fetch(:limit, [])
 
         if _provisioner_options[:type].eql?("ansible")
           _ansible_vagrant_configuration = {}
@@ -297,10 +304,9 @@ Vagrant.configure("2") do |config|
             lab: LAB,
             synced_folders: SYNCED_FOLDERS,
             provisioners: PROVISIONERS,
-            hypervisors: HYPERVISORS,
-            servers: SERVERS,
             is_provisioned: false,
-            vagrantfile_dir: VAGRANTFILE_DIR
+            vagrantfile_dir: VAGRANTFILE_DIR,
+            environment_variables: $ENVIRONMENT_VARIABLES
           }
 
           if provisioned?(_server[:hostname])
@@ -308,17 +314,23 @@ Vagrant.configure("2") do |config|
           end
 
           _custom_ansible_overrides = {
-            extra_vars: Vagrant::Util::DeepMerge.deep_merge(_provisioner_options.fetch(:extra_vars, _server.fetch(:ansible_extra_vars, {})), { 'ANSIBLE_EXTRA_VARS': _ansible_vagrant_configuration})
+            limit: _server[:hostname],
+            extra_vars:
+              Vagrant::Util::DeepMerge.deep_merge(
+                _provisioner_options.fetch(
+                  :extra_vars,
+                  _server.fetch(:ansible_extra_vars, {})
+                  ),
+                { 'ANSIBLE_EXTRA_VARS': _ansible_vagrant_configuration}
+              )
           }
           _custom_ansible_defaults = {
             playbook: "#{_provisioner.fetch(:ansible_playbook_dir, _server.fetch(:ansible_playbook_dir, 'ansible'))}/#{_provisioner.fetch(:ansible_playbook , _server.fetch(:ansible_playbook, nil))}",
-            limit: _server[:hostname],
             playbook_command: _server.fetch(:ansible_playbook_command, "ansible-playbook"),
             verbose: _server[:ansible_verbose],
             become: _server[:ansible_become] ? true : false,
             become_user: _server[:ansible_become_user] ? _server[:ansible_become_user] : 'root',
             compatibility_mode: "2.0",
-            # limit: "all",
             raw_ssh_args: _server[:ansible_raw_ssh_args],
             start_at_task: _server[:ansible_start_at_task],
             tags: _server[:ansible_tags],
@@ -346,9 +358,22 @@ Vagrant.configure("2") do |config|
             end
 
             ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:extra_vars] = (_ansible_vagrant_configuration)
-            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
-            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner] = Vagrant::Util::DeepMerge.deep_merge(ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner], _provisioner)
-            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner_options] = Vagrant::Util::DeepMerge.deep_merge(ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner_options], _provisioner_options)
+
+            if _limit_set.empty?
+              ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
+            else
+              ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:limit_hosts] = _limit_set
+            end
+
+            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner] = Vagrant::Util::DeepMerge.deep_merge(
+              ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner],
+              _provisioner
+            )
+            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner_options] =
+              Vagrant::Util::DeepMerge.deep_merge(
+                ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner_options],
+                _provisioner_options
+            )
 
             if (SERVERS_COUNT == SERVER_COUNTER)
               next
@@ -356,17 +381,18 @@ Vagrant.configure("2") do |config|
 
             _provisioner_options = {
               type: 'shell',
-              inline: "echo Skipping ansible serial deployment for #{_server[:hostname]}"
+              inline: "echo Skipping provisioner #{_provisioner_name} ansible serial deployment for #{_server[:hostname]}"
             }
 
           end
+        elsif _provisioner_options[:type].eql?("shell")
+          _provisioner_options[:env] = $ENVIRONMENT_VARIABLES.merge(_provisioner_options.fetch(:env, {}))
         end
         worker.vm.provision _provisioner_name, **_provisioner_options
       end
 
       if (SERVERS_COUNT == SERVER_COUNTER)
         ANSIBLE_MULTIMACHINE_SETTINGS.keys.each do |provisioner_name|
-
           _provisioner = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:provisioner]
           _provisioner_options = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:provisioner_options]
           _provisioner_options[:limit] = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:limit_hosts]

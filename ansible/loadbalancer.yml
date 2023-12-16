@@ -1,0 +1,6 @@
+---
+
+- hosts: "all"
+  gather_facts: yes
+  tasks:
+    - command: "echo Hello {{ inventory_hostname }}"
