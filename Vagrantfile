@@ -112,7 +112,7 @@ SERVERS = []
 SERVERS = initializeLabServerList(LAB)
 SERVERS_COUNT = SERVERS.length
 SERVER_COUNTER = 0
-ANSIBLE_MULTIMACHINE_SETTINGS = {}
+ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS = {}
 
 Vagrant.configure("2") do |config|
 
@@ -163,7 +163,7 @@ Vagrant.configure("2") do |config|
       worker.trigger.after :"VagrantPlugins::ProviderLibvirt::Action::CreateNetworks", type: :action do |trigger|
         _cmd = ''
         trigger.on_error = :continue
-        trigger.info = "Add DHCP host configuration for static ma      nagement network IP"
+        trigger.info = "Add DHCP host configuration for static management network IP"
 
         if _server[:mgmt_attach] and _management_network[:mac]
           _cmd += add_dhcp_host_conf(
@@ -348,8 +348,8 @@ Vagrant.configure("2") do |config|
           _provisioner_options = Vagrant::Util::DeepMerge.deep_merge(_provisioner_options, _custom_ansible_overrides)
 
           if not _provisioner[:ansible_serial_deployment]
-            if not ANSIBLE_MULTIMACHINE_SETTINGS.key?(:"#{_provisioner_name}")
-              ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"] = {
+            if not ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS.key?(:"#{_provisioner_name}")
+              ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"] = {
                 extra_vars: {},
                 limit_hosts: [],
                 provisioner: {},
@@ -357,21 +357,21 @@ Vagrant.configure("2") do |config|
               }
             end
 
-            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:extra_vars] = (_ansible_vagrant_configuration)
+            ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:extra_vars] = (_ansible_vagrant_configuration)
 
             if _limit_set.empty?
-              ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
+              ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
             else
-              ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:limit_hosts] = _limit_set
+              ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:limit_hosts] = _limit_set
             end
 
-            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner] = Vagrant::Util::DeepMerge.deep_merge(
-              ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner],
+            ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:provisioner] = Vagrant::Util::DeepMerge.deep_merge(
+              ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:provisioner],
               _provisioner
             )
-            ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner_options] =
+            ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:provisioner_options] =
               Vagrant::Util::DeepMerge.deep_merge(
-                ANSIBLE_MULTIMACHINE_SETTINGS[:"#{_provisioner_name}"][:provisioner_options],
+                ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:provisioner_options],
                 _provisioner_options
             )
 
@@ -392,12 +392,12 @@ Vagrant.configure("2") do |config|
       end
 
       if (SERVERS_COUNT == SERVER_COUNTER)
-        ANSIBLE_MULTIMACHINE_SETTINGS.keys.each do |provisioner_name|
-          _provisioner = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:provisioner]
-          _provisioner_options = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:provisioner_options]
-          _provisioner_options[:limit] = ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:limit_hosts]
+        ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS.keys.each do |provisioner_name|
+          _provisioner = ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{provisioner_name}"][:provisioner]
+          _provisioner_options = ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{provisioner_name}"][:provisioner_options]
+          _provisioner_options[:limit] = ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{provisioner_name}"][:limit_hosts]
 
-          if ANSIBLE_MULTIMACHINE_SETTINGS[:"#{provisioner_name}"][:limit_hosts].length != 0
+          if ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{provisioner_name}"][:limit_hosts].length != 0
             worker.vm.provision provisioner_name, **_provisioner_options
           end
         end
@@ -406,7 +406,7 @@ Vagrant.configure("2") do |config|
       worker.trigger.after [:destroy] do |trigger|
         _cmd = ''
         trigger.on_error = :continue
-        trigger.info = "Add DHCP host configuration for static management network IP"
+        trigger.info = "Remove DHCP host configuration for static management network IP"
 
         if _server[:mgmt_attach] and _management_network[:mac]
           _cmd = del_dhcp_host_conf(
