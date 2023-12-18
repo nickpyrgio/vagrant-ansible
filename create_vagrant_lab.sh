@@ -17,10 +17,11 @@ ln -s ../ansible . 2> /dev/null
 ln -s ../scripts . 2> /dev/null
 ln -s "$VAGRANT_ANSIBLE_FILE"  "$dir/Vagrantfile" 2> /dev/null
 
-cat > "${dir}/vagrant-ansible-provision.conf.rb" << EOF
+if ! test -f "${dir}/vagrant-ansible-provision.conf.rb"; then
+  cat > "${dir}/vagrant-ansible-provision.conf.rb" << EOF
 \$LAB="${1}"
 \$SETTINGS_FILE="#{VAGRANTFILE_DIR}/../servers.yml"
-\$ENVIRONMENT_VARIABLES= {
-    SSH_PUBLIC_KEY: ENV["VAGRANT_ANSIBLE_SSH_PUBLIC_KEY"]
-}
+\$ENVIRONMENT_FILE="#{VAGRANTFILE_DIR}/../environment.yml"
+
 EOF
+fi

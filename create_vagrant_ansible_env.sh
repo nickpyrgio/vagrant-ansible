@@ -10,6 +10,7 @@ VAGRANT_ENV_DIR=`pwd`
 
 ln -sf ../${VAGRANT_PROJECT_DIR_NAME}/Vagrantfile .
 ln -sf ../${VAGRANT_PROJECT_DIR_NAME}/create_vagrant_lab.sh .
+ln -sf ../${VAGRANT_PROJECT_DIR_NAME}/run_labs.sh .
 if ! test -f ${VAGRANT_ENV_DIR}/servers.yml; then
   cp ../${VAGRANT_PROJECT_DIR_NAME}/servers.yml.dist servers.yml
 fi
