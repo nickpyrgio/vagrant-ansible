@@ -288,7 +288,7 @@ Vagrant.configure("2") do |config|
           libvirt.connect_via_ssh = hypervisor[:hypervisor_connect_via_ssh]
         end
         libvirt.driver = "kvm"
-        libvirt.proxy_command = hypervisor.fetch(:hypervisor_proxy_command, '-W %h:%p')
+        libvirt.proxy_command = hypervisor.fetch(:hypervisor_proxy_command, 'ssh {host} -l {username} -i {id_ssh_key_file} -W %h:%p')
 
         # Domain Specific Options
         libvirt.default_prefix = "#{LAB}_";
