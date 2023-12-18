@@ -10,5 +10,6 @@
     - debug: var=groups
     - debug: var=installdb
     - debug: var=database_group_var
+    - debug: var=database_group_dict.key
     - ansible.builtin.pause:
        seconds: 5

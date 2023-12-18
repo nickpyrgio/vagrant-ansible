@@ -12,7 +12,7 @@
     - name: Add client key to authorized keys of server with restrictions
       authorized_key:
         user: "{{ item }}"
-        key: "{{ ANSIBLE_EXTRA_VARS.server.ssh_key }}"
+        key: "{{ ANSIBLE_EXTRA_VARS[inventory_hostname].server.ssh_key }}"
       loop:
         - root
         - vagrant

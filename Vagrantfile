@@ -130,6 +130,10 @@ Vagrant.configure("2") do |config|
     ENV[value]
   end
 
+  YAML.add_domain_type("", "Json") do |type, value|
+    "#{value.to_json}"
+  end
+
   if File.file?("#{SETTINGS_FILE}")
     SETTINGS = YAML.load_file("#{SETTINGS_FILE}", aliases: true)
   else
@@ -288,7 +292,10 @@ Vagrant.configure("2") do |config|
           libvirt.connect_via_ssh = hypervisor[:hypervisor_connect_via_ssh]
         end
         libvirt.driver = "kvm"
-        libvirt.proxy_command = hypervisor.fetch(:hypervisor_proxy_command, 'ssh {host} -l {username} -i {id_ssh_key_file} -W %h:%p')
+
+        if !hypervisor[:hypervisor_proxy_command].nil?
+          libvirt.proxy_command = hypervisor.fetch(:hypervisor_proxy_command)
+        end
 
         # Domain Specific Options
         libvirt.default_prefix = "#{LAB}_";
@@ -377,8 +384,13 @@ Vagrant.configure("2") do |config|
                 { 'ANSIBLE_EXTRA_VARS': ANSIBLE_EXTRA_VARS}
               )
           }
+          _playbook = "#{_provisioner.fetch(:ansible_playbook , _server.fetch(:ansible_playbook, nil))}"
+
+          if !_playbook.nil?
+            _playbook = "#{_provisioner.fetch(:ansible_playbook_dir, _server.fetch(:ansible_playbook_dir, 'ansible'))}/#{_playbook}"
+          end
           _custom_ansible_defaults = {
-            playbook: "#{_provisioner.fetch(:ansible_playbook_dir, _server.fetch(:ansible_playbook_dir, 'ansible'))}/#{_provisioner.fetch(:ansible_playbook , _server.fetch(:ansible_playbook, nil))}",
+            playbook: "#{_playbook}",
             playbook_command: _server.fetch(:ansible_playbook_command, "ansible-playbook"),
             verbose: _server[:ansible_verbose],
             become: _server[:ansible_become] ? true : false,
@@ -389,8 +401,8 @@ Vagrant.configure("2") do |config|
             tags: _server[:ansible_tags],
             skip_tags: _server[:ansible_skip_tags],
             inventory_path: _server[:ansible_inventory_path],
-            host_vars: _server[:ansible_host_vars] ? _server[:ansible_host_vars] : {},
-            groups: _server[:ansible_groups] ? _server[:ansible_groups] : {},
+            host_vars: _server[:ansible_host_vars] ? _server[:ansible_host_vars].to_yaml : {},
+            groups: _server[:ansible_groups] ? _server[:ansible_groups].to_yaml : {},
             config_file: _server[:ansible_config_file],
             vault_password_file: _server[:ansible_vault_password_file],
             force_remote_user: _server[:ansible_force_remote_user],
@@ -399,6 +411,10 @@ Vagrant.configure("2") do |config|
 
           _provisioner_options = Vagrant::Util::DeepMerge.deep_merge(_custom_ansible_defaults, _provisioner_options)
           _provisioner_options = Vagrant::Util::DeepMerge.deep_merge(_provisioner_options, _custom_ansible_overrides)
+
+          if (_provisioner_options.fetch(:playbook, nil).nil?) or !File.file?(_provisioner_options.fetch(:playbook))
+            next
+          end
 
           if not _provisioner[:ansible_serial_deployment]
             if not ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS.key?(:"#{_provisioner_name}")
