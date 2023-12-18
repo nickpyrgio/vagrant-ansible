@@ -2,4 +2,3 @@
 **/.vscode/
 servers.yml
 **/environment.yml
-vagrant-ansible-provision.conf.rb
