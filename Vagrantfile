@@ -145,6 +145,7 @@ Vagrant.configure("2") do |config|
   SERVERS_COUNT = SERVERS.length
   SERVER_COUNTER = 0
   ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS = {}
+  ANSIBLE_EXTRA_VARS = {}
 
   SERVERS.each do |_server|
 
@@ -287,7 +288,7 @@ Vagrant.configure("2") do |config|
           libvirt.connect_via_ssh = hypervisor[:hypervisor_connect_via_ssh]
         end
         libvirt.driver = "kvm"
-        libvirt.proxy_command = hypervisor[:hypervisor_proxy_command]
+        libvirt.proxy_command = hypervisor.fetch(:hypervisor_proxy_command, '-W %h:%p')
 
         # Domain Specific Options
         libvirt.default_prefix = "#{LAB}_";
@@ -363,6 +364,8 @@ Vagrant.configure("2") do |config|
             _vagrant_server_configuration[:is_provisioned] = true;
           end
 
+          ANSIBLE_EXTRA_VARS.merge!("#{_server[:hostname]}": _vagrant_server_configuration)
+
           _custom_ansible_overrides = {
             limit: _server[:hostname],
             extra_vars:
@@ -371,7 +374,7 @@ Vagrant.configure("2") do |config|
                   :extra_vars,
                   _server.fetch(:ansible_extra_vars, {})
                   ),
-                { 'ANSIBLE_EXTRA_VARS': _vagrant_server_configuration}
+                { 'ANSIBLE_EXTRA_VARS': ANSIBLE_EXTRA_VARS}
               )
           }
           _custom_ansible_defaults = {
