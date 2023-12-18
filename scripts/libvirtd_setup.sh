@@ -32,9 +32,19 @@ apt --assume-yes install vim uuid-runtime sipcalc
 # Update nsswitch
 sed -i 's/hosts:          files dns/hosts:          libvirt libvirt_guest files dns/' /etc/nsswitch.conf
 # Install libvirt
-apt --assume-yes install --no-install-recommends qemu-system libvirt-clients libvirt-daemon-system libnss-libvirt nscd
-# Needed for vagrant image files
-apt --assume-yes install --no-install-recommends qemu-utils
+apt \
+  --assume-yes \
+  --no-install-recommends \
+  install \
+    qemu-system \
+    qemu-utils \
+    libvirt-clients \
+    libvirt-daemon-system \
+    libnss-libvirt \
+    nscd \
+    libguestfs-tools \
+    libvirt-dev \
+    ruby-fog-libvirt
 
 usermod -a -G libvirt ${LIBVIRTD_USER}
 # Install dnsmasq
