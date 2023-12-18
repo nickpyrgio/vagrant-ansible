@@ -46,7 +46,10 @@ apt --assume-yes install --no-install-recommends resolvconf
 resolvconf -u
 
 # Install vagrant and vagrant-libvirt
-apt --assume-yes install --no-install-recommends vagrant-libvirt vagrant
+apt --assume-yes install --no-install-recommends vagrant
+
+# Install latest version of vagrant-libvirt
+vagrant plugin install vagrant-libvirt
 
 mkdir -p /opt/virsh/networks/ && cd /opt/virsh/networks/
 
