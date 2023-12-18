@@ -16,15 +16,13 @@ require "#{VAGRANTFILE_DIR}/vagrant-ansible-provision.conf.rb"
 def initializeLabServerList(lab)
   _server_list = SETTINGS['labs']["#{lab}"]['servers'].each
   _server_list.each do | server |
-
     _lab_settings = SETTINGS['labs']["#{lab}"]['lab_settings'] ? SETTINGS['labs']["#{lab}"]['lab_settings'] : {}
     _server = DEFAULT_GLOBAL_SETTINGS.merge(_lab_settings).merge(server)
-
-    if _server[:environment_file_path]
-      require File.absolute_path(_server[:environment_file_path], VAGRANTFILE_DIR)
-    end
     SERVERS.append(_server)
   end
+
+  # We sort based on server_index_weight value.
+  # By default servers will be configured based in the order defined.
   return SERVERS.sort_by { |_srv| _srv.fetch(:server_index_weight, 0) }
 end
 
@@ -45,6 +43,12 @@ def getBridgeName(network_name, hypervisor_name="localhost")
   return _bridge
 end
 
+def getHostIp(network_name, hypervisor_name="localhost")
+  _xml = Nokogiri::XML(`#{getVirsh(hypervisor_name)} net-dumpxml #{network_name} 2> /dev/null`)
+  _host_ip = _xml.at_xpath('//ip/@address')
+  return _host_ip
+end
+
 def getServerIp(network, ip_address_offset)
   network_prefix = IPAddr.new(network).to_s.chop
   return "#{network_prefix}#{ip_address_offset}"
@@ -59,15 +63,19 @@ def checkNetworkNameExists(network_name, hypervisor_name="localhost")
   return network_name_exists != '' ? true : false
 end
 
-def isHypervisorLocalhost?(hypervisor_name)
-  return hypervisor_name == 'localhost'
-end
-
 def getVirsh(hypervisor_name="localhost")
-  if hypervisor_name == 'localhost'
-    return "virsh --connect #{ENV['LIBVIRT_DEFAULT_URI']}"
+
+  hypervisor = Hash(HYPERVISORS[:"#{hypervisor_name}"])
+
+  if !hypervisor.fetch(:uri, nil).nil?
+    virsh_connect = hypervisor[:uri]
+  elsif hypervisor_name == 'localhost'
+    virsh_connect = ENV['LIBVIRT_DEFAULT_URI']
+  else
+    virsh_connect = "virsh --connect qemu+ssh://#{hypervisor[:hypervisor_user]}@#{hypervisor[:hypervisor_host]}/system"
   end
-  return "virsh --connect qemu+ssh://#{HYPERVISORS[:"#{hypervisor_name}"][:hypervisor_user]}@#{HYPERVISORS[:"#{hypervisor_name}"][:hypervisor_host]}/system"
+
+  return "virsh --connect #{virsh_connect}"
 end
 
 def add_dhcp_host_conf(network_name, network_address, network_mac, hostname, ip_address_offset, hypervisor_name="localhost")
@@ -92,31 +100,51 @@ def del_dhcp_host_conf(network_name, network_address, network_mac, hostname, ip_
   _cmd = "#{_cmd_dhcp_host_conf_check_exists} || #{_cmd_dhcp_host_conf_del};"
 end
 
-# Global variables
-
-# These variables are load from vagrant-ansible-provision.conf.rb file.
-SETTINGS_FILE = $SETTINGS_FILE
-LAB = $LAB ? $LAB : "default"
-
-if File.file?("#{SETTINGS_FILE}")
-  SETTINGS = YAML.load_file("#{SETTINGS_FILE}", aliases: true)
-else
-  SETTINGS = YAML.load_file("#{VAGRANTFILE_DIR}/servers.yml.dist", aliases: true)
-end
-
-SYNCED_FOLDERS = SETTINGS.fetch('synced_folders', {})
-PROVISIONERS = SETTINGS.fetch('provisioners', {})
-HYPERVISORS = SETTINGS.fetch('hypervisors', {})
-DEFAULT_GLOBAL_SETTINGS = SETTINGS['default_global_settings']
-SERVERS = []
-SERVERS = initializeLabServerList(LAB)
-SERVERS_COUNT = SERVERS.length
-SERVER_COUNTER = 0
-ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS = {}
 
 Vagrant.configure("2") do |config|
 
-  config.vagrant.plugins = "vagrant-libvirt"
+  config.vagrant.plugins = [
+    "vagrant-libvirt"
+  ]
+
+  # Global variables
+
+  # These variables are loaded from vagrant-ansible-provision.conf.rb file.
+
+  # Global servers settings file for all labs
+  SETTINGS_FILE = $SETTINGS_FILE
+
+  # If no lab is defined, the default lab is assumed
+  LAB = $LAB ? $LAB : "default"
+
+  ENVIRONMENT_FILE = $ENVIRONMENT_FILE
+
+  if File.file?("#{ENVIRONMENT_FILE}")
+    environment = YAML.load_file("#{ENVIRONMENT_FILE}", aliases: true)
+    environment.each do |key, value|
+      ENV[key] = value
+    end
+  end
+
+  YAML.add_domain_type("", "Env") do |type, value|
+    ENV[value]
+  end
+
+  if File.file?("#{SETTINGS_FILE}")
+    SETTINGS = YAML.load_file("#{SETTINGS_FILE}", aliases: true)
+  else
+    SETTINGS = YAML.load_file("#{VAGRANTFILE_DIR}/servers.yml.dist", aliases: true)
+  end
+
+  SYNCED_FOLDERS = SETTINGS.fetch('synced_folder_definitions', {})
+  PROVISIONERS = SETTINGS.fetch('provisioner_definitions', {})
+  HYPERVISORS = SETTINGS.fetch('hypervisor_definitions', {})
+  DEFAULT_GLOBAL_SETTINGS = SETTINGS['default_global_settings']
+  SERVERS = []
+  SERVERS = initializeLabServerList(LAB)
+  SERVERS_COUNT = SERVERS.length
+  SERVER_COUNTER = 0
+  ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS = {}
 
   SERVERS.each do |_server|
 
@@ -127,7 +155,9 @@ Vagrant.configure("2") do |config|
 
     _management_network = _server.fetch(:management_network);
 
-    config.vm.define _server[:hostname] do |worker|
+    config.vm.define _server[:hostname],
+      autostart: _server.fetch(:vagrant_autostart, true),
+      primary: _server.fetch(:primary, false) do |worker|
 
       worker.trigger.before :up do |trigger|
         _cmd = ''
@@ -140,7 +170,7 @@ Vagrant.configure("2") do |config|
             _management_network[:mac],
             _server[:hostname],
             _server[:ip_address_offset],
-            _server[:hypervisor_name]
+            _server.fetch(:hypervisor_name, "localhost")
           )
         end
         _server[:private_networks].each do |net|
@@ -151,7 +181,7 @@ Vagrant.configure("2") do |config|
               net[:mac],
               _server[:hostname],
               _server[:ip_address_offset],
-              _server[:hypervisor_name]
+              _server.fetch(:hypervisor_name, "localhost")
             )
           end
         end
@@ -160,8 +190,11 @@ Vagrant.configure("2") do |config|
         end
       end
 
-      worker.trigger.after :"VagrantPlugins::ProviderLibvirt::Action::CreateNetworks", type: :action do |trigger|
-        _cmd = ''
+      worker.trigger.after :"VagrantPlugins::ProviderLibvirt::Asynced_folder_definitionsction::CreateNetworks",
+        type: :action do |trigger|
+
+          _cmd = ''
+
         trigger.on_error = :continue
         trigger.info = "Add DHCP host configuration for static management network IP"
 
@@ -172,7 +205,7 @@ Vagrant.configure("2") do |config|
             _management_network[:mac],
             _server[:hostname],
             _server[:ip_address_offset],
-            _server[:hypervisor_name]
+            _server.fetch(:hypervisor_name, "localhost")
           )
         end
         _server[:private_networks].each do |net|
@@ -183,7 +216,7 @@ Vagrant.configure("2") do |config|
               net[:mac],
               _server[:hostname],
               _server[:ip_address_offset],
-              _server[:hypervisor_name]
+              _server.fetch(:hypervisor_name, "localhost")
             )
           end
         end
@@ -193,7 +226,6 @@ Vagrant.configure("2") do |config|
       end
 
       # SYNCED FOLDERS
-
       _server[:synced_folders].each do |folder|
         _src = folder.is_a?(Hash) ? folder[:src] : SYNCED_FOLDERS[folder][:src];
         _dest = folder.is_a?(Hash) ? folder[:dest] : SYNCED_FOLDERS[folder][:dest];
@@ -201,9 +233,26 @@ Vagrant.configure("2") do |config|
         worker.vm.synced_folder _src, _dest, **_options
       end
 
-      worker.vm.box = _server[:box];
-      if !_server[:box_url].nil?
-        worker.vm.box_url = _server[:box_url];
+      # Box settings
+      if _server[:box].is_a?(Hash)
+
+        worker.vm.box = _server[:box][:box]
+
+        if !_server[:box][:url].nil?
+          worker.vm.box_url = _server[:box][:url]
+        end
+        if !_server[:box][:version].nil?
+          worker.vm.box_version = _server[:box][:version]
+        end
+        if !_server[:box][:download_checksum].nil?
+          worker.vm.box_download_checksum = _server[:box][:download_checksum]
+        end
+        if !_server[:box][:download_checksum_type].nil?
+          worker.vm.box_download_checksum_type= _server[:box][:download_checksum_type]
+        end
+
+      else
+        worker.vm.box = _server[:box]
       end
 
       worker.vm.hostname = _server[:hostname];
@@ -226,17 +275,19 @@ Vagrant.configure("2") do |config|
       worker.vm.provider :libvirt do |libvirt|
 
         # Libvirt hypervisor connection Option
-        if !HYPERVISORS[:"#{_server[:hypervisor_name]}"][:uri].nil?
-          libvirt.uri = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:uri]
+        hypervisor = Hash(HYPERVISORS[:"#{_server.fetch(:hypervisor_name, "localhost")}"])
+
+        if !hypervisor[:uri].nil?
+          libvirt.uri = hypervisor[:uri]
         else
-          libvirt.host = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_host]
-          libvirt.username = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_user]
-          libvirt.password = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:password]
-          libvirt.id_ssh_key_file = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_id_ssh_key_file]
-          libvirt.connect_via_ssh = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_connect_via_ssh]
+          libvirt.host = hypervisor[:hypervisor_host]
+          libvirt.username = hypervisor[:hypervisor_user]
+          libvirt.password = hypervisor[:password]
+          libvirt.id_ssh_key_file = hypervisor[:hypervisor_id_ssh_key_file]
+          libvirt.connect_via_ssh = hypervisor[:hypervisor_connect_via_ssh]
         end
         libvirt.driver = "kvm"
-        libvirt.proxy_command = HYPERVISORS[:"#{_server[:hypervisor_name]}"][:hypervisor_proxy_command]
+        libvirt.proxy_command = hypervisor[:hypervisor_proxy_command]
 
         # Domain Specific Options
         libvirt.default_prefix = "#{LAB}_";
@@ -297,20 +348,19 @@ Vagrant.configure("2") do |config|
         _limit_set = _provisioner_options.fetch(:limit, [])
 
         if _provisioner_options[:type].eql?("ansible")
-          _ansible_vagrant_configuration = {}
-          _ansible_vagrant_configuration = {
+
+          _vagrant_server_configuration = {
             server: _server,
             management_network: _management_network,
             lab: LAB,
             synced_folders: SYNCED_FOLDERS,
             provisioners: PROVISIONERS,
             is_provisioned: false,
-            vagrantfile_dir: VAGRANTFILE_DIR,
-            environment_variables: $ENVIRONMENT_VARIABLES
+            vagrantfile_dir: VAGRANTFILE_DIR
           }
 
           if provisioned?(_server[:hostname])
-            _ansible_vagrant_configuration[:is_provisioned] = true;
+            _vagrant_server_configuration[:is_provisioned] = true;
           end
 
           _custom_ansible_overrides = {
@@ -321,7 +371,7 @@ Vagrant.configure("2") do |config|
                   :extra_vars,
                   _server.fetch(:ansible_extra_vars, {})
                   ),
-                { 'ANSIBLE_EXTRA_VARS': _ansible_vagrant_configuration}
+                { 'ANSIBLE_EXTRA_VARS': _vagrant_server_configuration}
               )
           }
           _custom_ansible_defaults = {
@@ -357,7 +407,7 @@ Vagrant.configure("2") do |config|
               }
             end
 
-            ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:extra_vars] = (_ansible_vagrant_configuration)
+            ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:extra_vars] = (_vagrant_server_configuration)
 
             if _limit_set.empty?
               ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{_provisioner_name}"][:limit_hosts].append(_server[:hostname])
@@ -385,12 +435,25 @@ Vagrant.configure("2") do |config|
             }
 
           end
-        elsif _provisioner_options[:type].eql?("shell")
-          _provisioner_options[:env] = $ENVIRONMENT_VARIABLES.merge(_provisioner_options.fetch(:env, {}))
         end
         worker.vm.provision _provisioner_name, **_provisioner_options
       end
 
+      if !_server[:vagrant_ssh_config].nil?
+        _ssh_config = Hash(_server[:vagrant_ssh_config])
+        if provisioned?(_server[:hostname]) or _ssh_config.fetch(:configure_before_provision, false)
+          worker.ssh.private_key_path = _ssh_config.fetch(:private_key_path, "#{VAGRANTFILE_DIR}/.vagrant/machines/#{_server[:hostname]}/private_key")
+          worker.ssh.username = _ssh_config.fetch(:username, "vagrant")
+          worker.ssh.extra_args = _ssh_config.fetch(:extra_args, [])
+          worker.ssh.host = _ssh_config.fetch(:host, nil)
+          worker.ssh.port = _ssh_config.fetch(:port, 22)
+          worker.ssh.insert_key = _ssh_config.fetch(:insert_key, true)
+          worker.ssh.keys_only = _ssh_config.fetch(:keys_only, true)
+          worker.ssh.password = _ssh_config.fetch(:password, nil)
+        end
+      end
+
+      # Run ansible multi-machine provisioners when we reach the last server iteration
       if (SERVERS_COUNT == SERVER_COUNTER)
         ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS.keys.each do |provisioner_name|
           _provisioner = ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS[:"#{provisioner_name}"][:provisioner]
@@ -415,7 +478,7 @@ Vagrant.configure("2") do |config|
             _management_network[:mac],
             _server[:hostname],
             _server[:ip_address_offset],
-            _server[:hypervisor_name]
+            _server.fetch(:hypervisor_name, "localhost")
           )
         end
 
@@ -427,7 +490,7 @@ Vagrant.configure("2") do |config|
               net[:mac],
               _server[:hostname],
               _server[:ip_address_offset],
-              _server[:hypervisor_name]
+              _server.fetch(:hypervisor_name, "localhost")
             )
           end
         end
