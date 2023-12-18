@@ -1,0 +1,8 @@
+---
+
+# PUT YOUR ENVIRONMENT VARIABLES HERE.
+
+COMMON_ANSIBLE_PLAYBOOK_DIR: "ansible"
+VAGRANT_ANSIBLE_SSH_PUBLIC_KEY: /path/to/your/public_key # your ssh public key
+VAGRANT_SSH_PRIVATE_KEY_PATH: /path/to/your/private_key
+VAGRANT_SSH_USERNAME: root

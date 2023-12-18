@@ -1,7 +1,7 @@
 ---
 
 # SYNCED_FOLDERS DEFINTIONS
-synced_folders:
+synced_folder_definitions:
   disabled: &disabled
     :src: "."
     :dest: "/vagrant"
@@ -14,7 +14,7 @@ synced_folders:
       :disabled: false
 
 # NETWORKS DEFINTIONS
-networks:
+network_definitions:
   db_private_network: &db_private_network
     :libvirt__network_name: db_private_network
     # :libvirt__network_address: "10.0.2.0"
@@ -24,7 +24,7 @@ networks:
     :libvirt__dhcp_enabled: false
 
 # PROVISIONERS DEFINTIONS
-provisioners:
+provisioner_definitions:
   libvirtd_setup: &libvirtd_setup
     :name: libvirtd_setup
     :options: &libvirtd_setup_options
@@ -33,7 +33,8 @@ provisioners:
       :run: once
   ansible_provisioner_common: &ansible_provisioner_common
     :name: ansible_common
-    :ansible_playbook_dir: ansible
+    # export ansible_playbook_dir="ansible"
+    :ansible_playbook_dir: !Env COMMON_ANSIBLE_PLAYBOOK_DIR
     :ansible_playbook: sample_playbook.yml
     :ansible_serial_deployment: no
     :options: &ansible_provisioner_common_options
@@ -51,7 +52,7 @@ provisioners:
   bootstrap_deployment: &bootstrap_deployment
     <<: *ansible_provisioner_common
     :name: bootstrap_deployment
-    :ansible_serial_deployment: false
+    :ansible_serial_deployment: true
     :options: &bootstrap_deployment_options
       <<: *ansible_provisioner_common_options
       :before: :all
@@ -84,9 +85,10 @@ provisioners:
       :limit:  lb1
       :playbook: ansible/loadbalancer.yml
 
-hypervisors:
+hypervisor_definitions:
   :localhost:
-    :uri:
+    # :uri: qemu:///system
+    :uri: !Env LIBVIRT_DEFAULT_URI
   :libvirt1:
     :hypervisor_host: libvirt1
     :hypervisor_user: root
@@ -94,16 +96,43 @@ hypervisors:
     :hypervisor_connect_via_ssh: true
     :hypervisor_proxy_command: ssh {host} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -l {username} -i {id_ssh_key_file} -W %h:%p
 
+forward_definitions:
+  :ssh: &forward_ssh_all
+    :host_ip: "0.0.0.0"
+    :guest: 22
+  :http: &forward_http_all
+    :host_ip: "0.0.0.0"
+    :guest: 80
+  :https: &forward_https_all
+    :host_ip: "0.0.0.0"
+    :guest: 443
+
 # Default values for all servers. Override on lab level, or server level
 default_global_settings:
-  :hypervisor_name: "localhost" # Always define
-  :ram: 1024 # Always define
+  # Optional, defaults to localhost, and virsh connect string to the LIBVIRT_DEFAULT_URI env variable value
+  :hypervisor_name: "localhost"
+  :ram: 1024M # Always define
   :cpus: 1 # Always define
+  :cpuaffinitiy: null # Optional dict
+  :cputopology: null # Optional string
+  :numa_nodes: null # Optional string
+  :nested: false # Optional, defaults to false
+  :autostart: false # Libvirt autostart. Optional defaults to false
+  :qemu_use_agent: false # Optional defaults to false
   :mgmt_attach: true # Defaults to false, define if management network is required
   :management_network: &management_network # Always define
     # Always set when mgmt_attach is true
     :management_network_name: 'vagrant-libvirt'
     :management_network_address: "192.168.121.0/24"
+    # Optional. These are the default values.
+    :management_network_keep: false
+    :management_network_autostart: true
+    :management_network_domain: null
+    :management_network_mtu: null
+    :management_network_iface_name: null
+    :management_network_mode: null
+    :management_network_model_type: virtio
+    :mac: null
   :box: "debian/bookworm64" # Always define
   :synced_folders:
     - disabled
@@ -115,6 +144,15 @@ default_global_settings:
   :server_index_weight: 0 # If unchanged vms will be created in the order defined.
   # Custom provisioners
   :provisioners: []
+  :vagrant_autostart: true # This settings configures if a server will start when vagrant up is run
+  :primary: false
+  :vagrant_ssh_config:
+     # If true then ssh will be configured before provisioning. Useful if custom box is build
+    :configure_before_provision: false
+    :username: !Env VAGRANT_SSH_USERNAME
+    :private_key_path: !Env VAGRANT_SSH_PRIVATE_KEY_PATH
+  # Custom non vagrantfile variables. Can be used in our ansible roles
+  :ssh_key: !Env VAGRANT_ANSIBLE_SSH_PUBLIC_KEY # This will be replaced by VAGRANT_ANSIBLE_SSH_PUBLIC_KEY environmental variable
 
 labs:
   libvirt:
@@ -134,9 +172,13 @@ labs:
               LIBVIRTD_MANAGEMENT_NETWORK_DHCP_START: "1"
               LIBVIRTD_MANAGEMENT_NETWORK_DHCP_END: "200"
               LIBVIRTD_MANAGEMENT_NETWORK_ADDRESS: &libvirt1_management_network_address "10.0.0.0/24"
+              # This will be replaced by VAGRANT_ANSIBLE_SSH_PUBLIC_KEY environmental variable
+              SSH_PUBLIC_KEY: !Env VAGRANT_ANSIBLE_SSH_PUBLIC_KEY
     servers:
       - :hostname: &libvirt1_hostname libvirt1
-        :environment_file_path: environment.rb
+        :forwards:
+          - <<: *forward_ssh_all
+            :host: 2210
         :ram: 8196
         :cpus: 4
         :ip_address_offset: 254 # It will get the ip 192.168.121.254/24 by dhcp
@@ -179,6 +221,7 @@ labs:
         :server_index_weight: 3
       - :hostname: appsrv2
         :server_index_weight: 4
+        :primary: true
       - :hostname: lb1
         :cpus: 1
         :server_index_weight: 5

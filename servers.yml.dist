@@ -1,62 +1,25 @@
 ---
-# NETWORKS DEFINTIONS
-networks:
-
-# PROVISIONERS DEFINTIONS
-provisioners:
-
-# SYNCED_FOLDERS DEFINTIONS
-synced_folders:
-
-hypervisors:
-  :localhost:
-    :hypervisor_host: null
-    :hypervisor_user: null
-    :hypervisor_id_ssh_key_file: null
-    :hypervisor_connect_via_ssh: null
 
 # Default values for all servers. Override on lab level, or server level
 default_global_settings:
-  # libvirt provider context
-  :hypervisor_name: "localhost" # Always define
-  :ram: 1024 # Always define
-  :cpus: 1 # Always define
-  :cpuaffinitiy: null # Optional dict
-  :cputopology: null # Optional string
-  :numa_nodes: null # Optional string
-  :nested: false # Optional, defaults to false
-  :autostart: false # Optional defaults to false
-  :qemu_use_agent: false # Optional defaults to false
-  :mgmt_attach: true # Defaults to false, define if management network is required
-  :management_network: &management_network # Always define
+  :box: "debian/bookworm64"
+  :ram: 1024M
+  :cpus: 1
+  :mgmt_attach: true
+  :management_network: &management_network
     # Always set when mgmt_attach is true
     :management_network_name: 'vagrant-libvirt'
     :management_network_address: "192.168.121.0/24"
-    # Optional. These are the default values.
-    :management_network_keep: false
-    :management_network_autostart: true
-    :management_network_domain: null
-    :management_network_mtu: null
-    :management_network_iface_name: null
-    :management_network_mode: null
-    :management_network_model_type: virtio
-    :mac: null
-  # vm context https://developer.hashicorp.com/vagrant/docs/vagrantfile/machine_settings
-  :box: "debian/bookworm64" # Always define
-  :box_url: null # Optional string
-  :synced_folders: # Always define disabled
-    - disabled: &disabled
+  :synced_folders:
+    - disabled:
       :src: "."
       :dest: "/vagrant"
       :options:
         :disabled: true
-  # Optional
   :forwards: []
   :private_networks: []
   :public_networks: []
   :storage: []
-  :server_index_weight: 0 # If unchanged vms will be created according to the order defined.
-  # Custom provisioners
   :provisioners: []
 
 labs:
@@ -65,4 +28,6 @@ labs:
       - :hostname: node1
       - :hostname: node2
       - :hostname: node3
+        :ram: 512M
       - :hostname: node4
+        :ram: 512
