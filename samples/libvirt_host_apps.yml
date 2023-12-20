@@ -17,14 +17,12 @@ synced_folder_definitions:
 network_definitions:
   db_private_network: &db_private_network
     :libvirt__network_name: db_private_network
-    # :libvirt__network_address: "10.0.2.0"
     :libvirt__netmask: '255.255.255.0'
     :libvirt__forward_mode: veryisolated
     :libvirt__always_destroy: true
     :libvirt__dhcp_enabled: false
   libvirt_route_only: &libvirt_route_only
     :libvirt__network_name: libvirt_route_only
-    # :libvirt__network_address: "10.0.2.0"
     :libvirt__netmask: '255.255.255.0'
     :libvirt__forward_mode: route
     :libvirt__always_destroy: true
@@ -82,7 +80,8 @@ provisioner_definitions:
         :loadbalancer_servers: ["lb1", "lb2"]
         :database_servers:vars:
           :database_group_var: "This is a database_servers group ansible variable"
-          :database_group_dict: !Json # We add the json tag so the variable will be parsed correctly by ansible as a dictionary
+          # We add the json tag so the variable will be parsed correctly by ansible as a dictionary.
+          :database_group_dict: !Json
             :key: value
   bootstrap_deployment: &bootstrap_deployment
     <<: *ansible_provisioner_common
@@ -181,19 +180,18 @@ default_global_settings:
   :provisioners: []
   :vagrant_autostart: true # This settings configures if a server will start when vagrant up is run
   :primary: false
-  :vagrant_ssh_config:
-     # If true then ssh will be configured before provisioning. Useful if custom box is build
-    :configure_before_provision: false
-    :username: !Env VAGRANT_SSH_USERNAME
-    :private_key_path: !Env VAGRANT_SSH_PRIVATE_KEY_PATH
+
   # Custom non vagrantfile variables. Can be used in our ansible roles
   :ssh_key: !Env VAGRANT_ANSIBLE_SSH_PUBLIC_KEY # This will be replaced by VAGRANT_ANSIBLE_SSH_PUBLIC_KEY environmental variable
 
 labs:
-  default:
-    servers: []
   libvirt:
     lab_settings:
+      :vagrant_ssh_config:
+        # If true then ssh will be configured before provisioning. Useful if we have built our own box.
+        :configure_before_provision: false
+        :username: !Env VAGRANT_SSH_USERNAME
+        :private_key_path: !Env VAGRANT_SSH_PRIVATE_KEY_PATH
       :nested: true
       :provisioners:
         - <<: *libvirtd_setup
@@ -220,7 +218,6 @@ labs:
         :private_networks:
           - <<: *libvirt_route_only
             :ip: "10.30.30.12"
-            # :libvirt__adapter: 2
             :libvirt__iface_name: libvirt0
         :vagrant_ssh_config:
           :forward_agent: true
@@ -262,7 +259,6 @@ labs:
         :private_networks:
           - <<: *db_private_network
             :ip: "10.20.30.12"
-            # :libvirt__adapter: 2
             :libvirt__iface_name: guest_dbif2
         :storage: *db_storage
       - :hostname: appsrv1
@@ -277,7 +273,7 @@ labs:
         :server_index_weight: 6
         :provisioners:
           - <<: *appserver_deployment
-            # :name: appserver_standalone_deployment
+            :name: appserver_standalone_deployment
             :ansible_serial_deployment: true
             :options:
               <<: *appserver_deployment_options
@@ -289,3 +285,24 @@ labs:
           - <<: *db_private_network
             :ip: "10.20.30.13"
             :libvirt__iface_name: guest_dbif3
+  default:
+    servers:
+      - :hostname: default
+        :box: generic/debian12
+        :mgmt_attach: false
+        :qemu_use_agent: true
+        :provisioners: []
+        :ip_address_offset: 100
+        :private_networks:
+          - :libvirt__network_name: default
+            :mac: aa:aa:aa:15:81:00
+            :libvirt__network_address: 10.40.0.0
+            :libvirt__netmask: 255.255.255.0
+            :type: dhcp
+            :libvirt__forward_mode: nat
+            :auto_config: true
+          - :ip: 10.50.30.2
+            :libvirt__network_name: default2
+            :mac: aa:aa:aa:15:8f:1d
+            :libvirt__dhcp_enabled: false
+            :libvirt__forward_mode: veryisolated

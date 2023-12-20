@@ -117,16 +117,17 @@ Vagrant.configure("2") do |config|
   LAB = $LAB ? $LAB : "default"
 
   ENVIRONMENT_FILE = $ENVIRONMENT_FILE
+  VAGRANT_ANSIBLE_ENVIRONMENT = {}
+  # Merge ENV into VAGRANT_ANSIBLE_ENVIRONMENT
+  ENV.each_pair { |name, value| VAGRANT_ANSIBLE_ENVIRONMENT[name] = value } # => ENV
 
   if File.file?("#{ENVIRONMENT_FILE}")
     environment = YAML.load_file("#{ENVIRONMENT_FILE}", aliases: true)
-    environment.each do |key, value|
-      ENV[key] = value.to_s
-    end
+    VAGRANT_ANSIBLE_ENVIRONMENT.merge!(environment)
   end
 
   YAML.add_domain_type("", "Env") do |type, value|
-    ENV[value]
+    VAGRANT_ANSIBLE_ENVIRONMENT[value]
   end
 
   YAML.add_domain_type("", "Json") do |type, value|
@@ -167,7 +168,7 @@ Vagrant.configure("2") do |config|
         _cmd = ''
         trigger.on_error = :continue
         trigger.info = "Add DHCP host configuration for static management network IP"
-        if _server[:mgmt_attach] and _management_network[:mac]
+        if _server[:mgmt_attach] and _management_network[:mac] and _server[:ip_address_offset]
           _cmd += add_dhcp_host_conf(
             _management_network[:management_network_name],
             _management_network[:management_network_address],
@@ -178,7 +179,7 @@ Vagrant.configure("2") do |config|
           )
         end
         _server[:private_networks].each do |net|
-          if net[:type].eql? "dhcp" and net[:mac]
+          if net[:type].eql? "dhcp" and net[:mac] and _server[:ip_address_offset]
             _cmd += add_dhcp_host_conf(
               net[:libvirt__network_name],
               net[:libvirt__network_address],
@@ -195,13 +196,12 @@ Vagrant.configure("2") do |config|
       end
 
       worker.trigger.after :"VagrantPlugins::ProviderLibvirt::Action::CreateNetworks", type: :action do |trigger|
-
         _cmd = ''
 
         trigger.on_error = :continue
         trigger.info = "Add DHCP host configuration for static management network IP"
 
-        if _server[:mgmt_attach] and _management_network[:mac]
+        if _server[:mgmt_attach] and _management_network[:mac] and _server[:ip_address_offset]
           _cmd += add_dhcp_host_conf(
             _management_network[:management_network_name],
             _management_network[:management_network_address],
@@ -212,7 +212,7 @@ Vagrant.configure("2") do |config|
           )
         end
         _server[:private_networks].each do |net|
-          if net[:type].eql? "dhcp" and net[:mac]
+          if net[:type].eql? "dhcp" and net[:mac] and _server[:ip_address_offset]
             _cmd += add_dhcp_host_conf(
               net[:libvirt__network_name],
               net[:libvirt__network_address],
@@ -223,7 +223,6 @@ Vagrant.configure("2") do |config|
             )
           end
         end
-
         unless _cmd.empty?
           trigger.run = {inline: "bash -c \"#{_cmd}\""}
         end
@@ -241,7 +240,6 @@ Vagrant.configure("2") do |config|
       if _server[:box].is_a?(Hash)
 
         worker.vm.box = _server[:box][:box]
-
         if !_server[:box][:url].nil?
           worker.vm.box_url = _server[:box][:url]
         end
@@ -254,7 +252,6 @@ Vagrant.configure("2") do |config|
         if !_server[:box][:download_checksum_type].nil?
           worker.vm.box_download_checksum_type= _server[:box][:download_checksum_type]
         end
-
       else
         worker.vm.box = _server[:box]
       end
@@ -327,7 +324,6 @@ Vagrant.configure("2") do |config|
 
         # Management Network
         if _server[:mgmt_attach]
-
           libvirt.management_network_name = _management_network[:management_network_name];
           libvirt.management_network_address = _management_network[:management_network_address];
           libvirt.management_network_iface_name = _management_network[:management_network_iface_name];
@@ -493,7 +489,7 @@ Vagrant.configure("2") do |config|
         trigger.on_error = :continue
         trigger.info = "Remove DHCP host configuration for static management network IP"
 
-        if _server[:mgmt_attach] and _management_network[:mac]
+        if _server[:mgmt_attach] and _management_network[:mac] and _server[:ip_address_offset]
           _cmd = del_dhcp_host_conf(
             _management_network[:management_network_name],
             _management_network[:management_network_address],
@@ -505,7 +501,7 @@ Vagrant.configure("2") do |config|
         end
 
         _server[:private_networks].each do |net|
-          if net[:type].eql? "dhcp" and net[:mac]
+          if net[:type].eql? "dhcp" and net[:mac] and _server[:ip_address_offset]
             _cmd += del_dhcp_host_conf(
               net[:libvirt__network_name],
               net[:libvirt__network_address],
