@@ -20,7 +20,6 @@ def initializeLabServerList(lab)
     _server = DEFAULT_GLOBAL_SETTINGS.merge(_lab_settings).merge(server)
     SERVERS.append(_server)
   end
-
   # We sort based on server_index_weight value.
   # By default servers will be configured based in the order defined.
   return SERVERS.sort_by { |_srv| _srv.fetch(:server_index_weight, 0) }
@@ -122,7 +121,7 @@ Vagrant.configure("2") do |config|
   if File.file?("#{ENVIRONMENT_FILE}")
     environment = YAML.load_file("#{ENVIRONMENT_FILE}", aliases: true)
     environment.each do |key, value|
-      ENV[key] = value
+      ENV[key] = value.to_s
     end
   end
 
@@ -195,10 +194,9 @@ Vagrant.configure("2") do |config|
         end
       end
 
-      worker.trigger.after :"VagrantPlugins::ProviderLibvirt::Asynced_folder_definitionsction::CreateNetworks",
-        type: :action do |trigger|
+      worker.trigger.after :"VagrantPlugins::ProviderLibvirt::Action::CreateNetworks", type: :action do |trigger|
 
-          _cmd = ''
+        _cmd = ''
 
         trigger.on_error = :continue
         trigger.info = "Add DHCP host configuration for static management network IP"
@@ -225,6 +223,7 @@ Vagrant.configure("2") do |config|
             )
           end
         end
+
         unless _cmd.empty?
           trigger.run = {inline: "bash -c \"#{_cmd}\""}
         end
@@ -292,6 +291,8 @@ Vagrant.configure("2") do |config|
           libvirt.connect_via_ssh = hypervisor[:hypervisor_connect_via_ssh]
         end
         libvirt.driver = "kvm"
+        libvirt.storage_pool_name = hypervisor.fetch(:storage_pool_name, 'default')
+        libvirt.snapshot_pool_name = hypervisor.fetch(:snapshot_pool_name, 'default')
 
         if !hypervisor[:hypervisor_proxy_command].nil?
           libvirt.proxy_command = hypervisor.fetch(:hypervisor_proxy_command)
@@ -461,7 +462,7 @@ Vagrant.configure("2") do |config|
       if !_server[:vagrant_ssh_config].nil?
         _ssh_config = Hash(_server[:vagrant_ssh_config])
         if provisioned?(_server[:hostname]) or _ssh_config.fetch(:configure_before_provision, false)
-          worker.ssh.private_key_path = _ssh_config.fetch(:private_key_path, "#{VAGRANTFILE_DIR}/.vagrant/machines/#{_server[:hostname]}/private_key")
+          worker.ssh.private_key_path = _ssh_config.fetch(:private_key_path, "#{VAGRANTFILE_DIR}/.vagrant/machines/#{_server[:hostname]}/libvirt/private_key")
           worker.ssh.username = _ssh_config.fetch(:username, "vagrant")
           worker.ssh.extra_args = _ssh_config.fetch(:extra_args, [])
           worker.ssh.host = _ssh_config.fetch(:host, nil)
@@ -469,6 +470,8 @@ Vagrant.configure("2") do |config|
           worker.ssh.insert_key = _ssh_config.fetch(:insert_key, true)
           worker.ssh.keys_only = _ssh_config.fetch(:keys_only, true)
           worker.ssh.password = _ssh_config.fetch(:password, nil)
+          worker.ssh.forward_agent = _ssh_config.fetch(:forward_agent, false)
+          worker.ssh.forward_env = _ssh_config.fetch(:forward_env, nil)
         end
       end
 

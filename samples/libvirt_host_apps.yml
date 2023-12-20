@@ -22,6 +22,13 @@ network_definitions:
     :libvirt__forward_mode: veryisolated
     :libvirt__always_destroy: true
     :libvirt__dhcp_enabled: false
+  libvirt_route_only: &libvirt_route_only
+    :libvirt__network_name: libvirt_route_only
+    # :libvirt__network_address: "10.0.2.0"
+    :libvirt__netmask: '255.255.255.0'
+    :libvirt__forward_mode: route
+    :libvirt__always_destroy: true
+    :libvirt__dhcp_enabled: false
 
 # PROVISIONERS DEFINTIONS
 provisioner_definitions:
@@ -31,6 +38,32 @@ provisioner_definitions:
       :type: shell
       :path: scripts/libvirtd_setup.sh
       :run: once
+  docker_setup: &docker_setup
+    :name: docker_setup
+    :options: &docker_setup_options
+      :type: shell
+      :path: scripts/docker_setup.sh
+      :run: once
+  vagrant_setup: &vagrant_setup
+    :name: vagrant_setup
+    :options: &vagrant_setup_options
+      :type: shell
+      :path: scripts/vagrant_setup.sh
+      # :upload_path: /usr/local/bin/vagrant_setup.sh
+  cleanup_shell_provisioner: &cleanup_shell_provisioner
+    :name: cleanup_shell_provisioner
+    :options: &cleanup_shell_provisioner_options
+      :type: shell
+      :inline: test -f /tmp/vagrant-shell && rm /tmp/vagrant-shell
+      :run: once
+      :after: :each
+  vagrant_ansible_project: &vagrant_ansible_project
+    :name: vagrant_ansible_project
+    :options: &vagrant_ansible_project_options
+      :type: file
+      :source: '.'
+      :destination: ~/vagrant-ansible-test
+      :run: never
   ansible_provisioner_common: &ansible_provisioner_common
     :name: ansible_common
     # export ansible_playbook_dir="ansible"
@@ -44,11 +77,13 @@ provisioner_definitions:
       :become: true
       :become_user: root
       :groups:
-        database_servers: ["db1", "db2", "db3"]
-        application_servers: ["appsrv1", "appsrv2"]
-        loadbalancer_servers: ["lb1", "lb2"]
-        database_servers:vars:
-          database_group_var: "This is a database_servers group ansible variable"
+        :database_servers: ["db1", "db2", "db3"]
+        :application_servers: ["appsrv1", "appsrv2"]
+        :loadbalancer_servers: ["lb1", "lb2"]
+        :database_servers:vars:
+          :database_group_var: "This is a database_servers group ansible variable"
+          :database_group_dict: !Json # We add the json tag so the variable will be parsed correctly by ansible as a dictionary
+            :key: value
   bootstrap_deployment: &bootstrap_deployment
     <<: *ansible_provisioner_common
     :name: bootstrap_deployment
@@ -155,6 +190,8 @@ default_global_settings:
   :ssh_key: !Env VAGRANT_ANSIBLE_SSH_PUBLIC_KEY # This will be replaced by VAGRANT_ANSIBLE_SSH_PUBLIC_KEY environmental variable
 
 labs:
+  default:
+    servers: []
   libvirt:
     lab_settings:
       :nested: true
@@ -174,8 +211,19 @@ labs:
               LIBVIRTD_MANAGEMENT_NETWORK_ADDRESS: &libvirt1_management_network_address "10.0.0.0/24"
               # This will be replaced by VAGRANT_ANSIBLE_SSH_PUBLIC_KEY environmental variable
               SSH_PUBLIC_KEY: !Env VAGRANT_ANSIBLE_SSH_PUBLIC_KEY
+        - *vagrant_setup
+        - *vagrant_ansible_project
+        - *docker_setup
+        - *cleanup_shell_provisioner
     servers:
       - :hostname: &libvirt1_hostname libvirt1
+        :private_networks:
+          - <<: *libvirt_route_only
+            :ip: "10.30.30.12"
+            # :libvirt__adapter: 2
+            :libvirt__iface_name: libvirt0
+        :vagrant_ssh_config:
+          :forward_agent: true
         :forwards:
           - <<: *forward_ssh_all
             :host: 2210

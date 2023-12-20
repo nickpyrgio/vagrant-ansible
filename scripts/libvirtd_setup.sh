@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # SIMPLE LIBVIRT INSTALLATION AND SETUP FOR DEBIAN DISTRIBUTION >= 11
 # RUN AS ROOT.
 
@@ -41,10 +43,7 @@ apt \
     libvirt-clients \
     libvirt-daemon-system \
     libnss-libvirt \
-    nscd \
-    libguestfs-tools \
-    libvirt-dev \
-    ruby-fog-libvirt
+    nscd
 
 usermod -a -G libvirt ${LIBVIRTD_USER}
 # Install dnsmasq
@@ -54,12 +53,6 @@ apt --assume-yes install --no-install-recommends dnsmasq
 apt --assume-yes install --no-install-recommends resolvconf
 
 resolvconf -u
-
-# Install vagrant and vagrant-libvirt
-apt --assume-yes install --no-install-recommends vagrant
-
-# Install latest version of vagrant-libvirt
-vagrant plugin install vagrant-libvirt
 
 mkdir -p /opt/virsh/networks/ && cd /opt/virsh/networks/
 

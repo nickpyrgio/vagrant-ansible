@@ -8,7 +8,7 @@
     - command: "echo Hello World"
 #    - debug: var=ANSIBLE_EXTRA_VARS
     - debug: var=groups
-    - debug: var=installdb
+    - debug: var=installdb.db1.value
     - debug: var=database_group_var
     - debug: var=database_group_dict.key
     - ansible.builtin.pause:
