@@ -306,6 +306,18 @@ Vagrant.configure("2") do |config|
         libvirt.qemu_use_agent = _server[:qemu_use_agent].to_s == 'true' ? true : false;
         libvirt.mgmt_attach = _server[:mgmt_attach].to_s == 'false' ? false : true;
 
+        if !_server[:cpu_mode].nil?
+          libvirt.cpu_mode = _server[:cpu_mode];
+        end
+
+        if !_server[:cpu_model].nil?
+          libvirt.cpu_model = _server[:cpu_model];
+        end
+
+        if !_server[:cpu_fallback].nil?
+          libvirt.cpu_fallback = _server[:cpu_fallback];
+        end
+
         if !_server[:cpuaffinitiy].nil?
           libvirt.cpuaffinitiy _server[:cpuaffinitiy];
         end
@@ -320,6 +332,16 @@ Vagrant.configure("2") do |config|
 
         if !_server[:numa_nodes].nil?
           libvirt.numa_nodes = _server[:numa_nodes].to_s;
+        end
+        # boot order
+        if !_server[:boot_order].nil?
+          _server[:boot_order].each do |boot|
+            libvirt.boot boot
+          end
+        end
+
+        if !_server[:loader].nil?
+          libvirt.loader = _server[:loader].to_s;
         end
 
         # Management Network
@@ -468,6 +490,7 @@ Vagrant.configure("2") do |config|
           worker.ssh.password = _ssh_config.fetch(:password, nil)
           worker.ssh.forward_agent = _ssh_config.fetch(:forward_agent, false)
           worker.ssh.forward_env = _ssh_config.fetch(:forward_env, nil)
+          worker.ssh.shell = _ssh_config.fetch(:shell, 'bash -l')
         end
       end
 
