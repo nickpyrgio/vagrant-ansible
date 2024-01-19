@@ -79,23 +79,27 @@ end
 
 def add_dhcp_host_conf(network_name, network_address, network_mac, hostname, ip_address_offset, hypervisor_name="localhost")
   _cmd = ''
+  _hypervisor = Hash(HYPERVISORS[:"#{hypervisor_name}"])
+  _leasehelper_path = _hypervisor.fetch(:leasehelper_path, "/usr/lib/libvirt/libvirt_leaseshelper")
   _bridge_name = getBridgeName(network_name, hypervisor_name)
   _ip =  getServerIp(network_address, ip_address_offset)
   _dhcp_host_conf = getDhcpHostConf(network_mac, hostname, _ip)
   _cmd_dhcp_host_conf_check_exists = "(#{getVirsh(hypervisor_name)} net-dumpxml #{network_name} 2> /dev/null | grep \\\"#{_dhcp_host_conf}\\\" > /dev/null)"
   _cmd_dhcp_host_conf_add = "{ #{getVirsh(hypervisor_name)} net-update #{network_name} add ip-dhcp-host \\\"<host mac='#{network_mac}' name='#{hostname}' ip='#{_ip}'> <lease expiry='48' unit='hours' /> </host>\\\" --live --config --parent-index 0 2> /dev/null;"
-  _cmd_dhcp_host_conf_add += "#{sshCommand(hypervisor_name)} sudo DNSMASQ_INTERFACE='#{_bridge_name}' DNSMASQ_SUPPLIED_HOSTNAME='#{hostname}' /usr/lib/libvirt/libvirt_leaseshelper add '#{network_mac}' '#{_ip}'; }"
+  _cmd_dhcp_host_conf_add += "#{sshCommand(hypervisor_name)} sudo DNSMASQ_INTERFACE='#{_bridge_name}' DNSMASQ_SUPPLIED_HOSTNAME='#{hostname}' #{_leasehelper_path} add '#{network_mac}' '#{_ip}'; }"
   _cmd = "#{_cmd_dhcp_host_conf_check_exists} || #{_cmd_dhcp_host_conf_add};"
 end
 
 def del_dhcp_host_conf(network_name, network_address, network_mac, hostname, ip_address_offset, hypervisor_name="localhost")
   _cmd = ''
+  _hypervisor = Hash(HYPERVISORS[:"#{hypervisor_name}"])
+  _leasehelper_path = _hypervisor.fetch(:leasehelper_path, "/usr/lib/libvirt/libvirt_leaseshelper")
   _bridge_name = getBridgeName(network_name, hypervisor_name)
   _ip =  getServerIp(network_address, ip_address_offset)
   _dhcp_host_conf = getDhcpHostConf(network_mac, hostname, _ip)
   _cmd_dhcp_host_conf_check_exists = "!(#{getVirsh(hypervisor_name)} net-dumpxml #{network_name} 2> /dev/null | grep \\\"#{_dhcp_host_conf}\\\" > /dev/null)"
   _cmd_dhcp_host_conf_del = "{ #{getVirsh(hypervisor_name)} net-update #{network_name} delete ip-dhcp-host \\\"<host mac='#{network_mac}' name='#{hostname}' ip='#{_ip}'> <lease expiry='48' unit='hours' /> </host>\\\" --live --config --parent-index 0 2> /dev/null;"
-  _cmd_dhcp_host_conf_del += "#{sshCommand(hypervisor_name)} sudo DNSMASQ_INTERFACE='#{_bridge_name}' DNSMASQ_SUPPLIED_HOSTNAME='#{hostname}' /usr/lib/libvirt/libvirt_leaseshelper del '#{network_mac}' '#{_ip}'; }"
+  _cmd_dhcp_host_conf_del += "#{sshCommand(hypervisor_name)} sudo DNSMASQ_INTERFACE='#{_bridge_name}' DNSMASQ_SUPPLIED_HOSTNAME='#{hostname}' #{_leasehelper_path} del '#{network_mac}' '#{_ip}'; }"
   _cmd = "#{_cmd_dhcp_host_conf_check_exists} || #{_cmd_dhcp_host_conf_del};"
 end
 
