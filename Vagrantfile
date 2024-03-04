@@ -327,15 +327,15 @@ Vagrant.configure("2") do |config|
         end
 
         if !_server[:cputopology].nil?
-          libvirt.cputopology = _server[:cputopology].to_s;
+          libvirt.cputopology _server[:cputopology] ;
         end
 
         if !_server[:cpuset].nil?
-          libvirt.cpus = _server[:cpuset].to_s;
+          libvirt.cpuset = _server[:cpuset].to_s;
         end
 
         if !_server[:numa_nodes].nil?
-          libvirt.numa_nodes = _server[:numa_nodes].to_s;
+          libvirt.numa_nodes = _server[:numa_nodes];
         end
         # boot order
         if !_server[:boot_order].nil?
