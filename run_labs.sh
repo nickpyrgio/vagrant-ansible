@@ -4,5 +4,5 @@ VAGRANT_ENV_DIR=`pwd`
 
 for lab in "$@"
 do
-    cd "${VAGRANT_ENV_DIR}/${lab}" && vagrant up
+    cd "${VAGRANT_ENV_DIR}/${lab}" && vagrant up --no-provision
 done

@@ -498,6 +498,20 @@ Vagrant.configure("2") do |config|
         end
       end
 
+      if !_server[:vagrant_winrm_config].nil?
+        _winrm_config = Hash(_server[:vagrant_winrm_config])
+        if provisioned?(_server[:hostname]) or _winrm_config.fetch(:configure_before_provision, false)
+          worker.winrm.username = _winrm_config.fetch(:username, "vagrant")
+          worker.winrm.password = _winrm_config.fetch(:password, 'vagrant')
+          worker.winrm.host = _winrm_config.fetch(:host, nil)
+          worker.winrm.port = _winrm_config.fetch(:port, 5986)
+          worker.winrm.guest_port = _winrm_config.fetch(:port, 5985)
+          worker.winrm.transport = _winrm_config.fetch(:transport, ':negotiate')
+          worker.winrm.basic_auth_only = _winrm_config.fetch(:basic_auth_only, false)
+          worker.winrm.ssl_peer_verification = _winrm_config.fetch(:ssl_peer_verification, false)
+        end
+      end
+
       # Run ansible multi-machine provisioners when we reach the last server iteration
       if (SERVERS_COUNT == SERVER_COUNTER)
         ANSIBLE_MULTIMACHINE_PROVISIONER_SETTINGS.keys.each do |provisioner_name|
