@@ -303,7 +303,7 @@ Vagrant.configure("2") do |config|
         libvirt.default_prefix = "#{LAB}_";
         libvirt.title = _server.fetch(:title, _server[:hostname])
         libvirt.description = _server.fetch(:description, _server[:hostname])
-        libvirt.cpus = _server[:cpus].to_s;
+        libvirt.cpus = _server[:cpus].to_i;
         libvirt.memory = _server[:ram].to_s;
         libvirt.autostart = _server[:autostart].to_s == 'true' ?  true : false;
         libvirt.nested = _server[:nested].to_s == 'true' ?  true : false;
@@ -335,7 +335,8 @@ Vagrant.configure("2") do |config|
         end
 
         if !_server[:numa_nodes].nil?
-          libvirt.numa_nodes = _server[:numa_nodes];
+          # We pass a deep copy of the _server[:numa_nodes] array because its memory elements get changed on each iteration by the vagrant-libvirt plugin
+          libvirt.numa_nodes = Marshal.load(Marshal.dump(_server[:numa_nodes]));
         end
         # boot order
         if !_server[:boot_order].nil?
